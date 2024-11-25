@@ -30,6 +30,7 @@ class Attacks:
         self.number_classes = torch.tensor(
             number_classes, device=self.device, pin_memory=True
         )
+        self.input_keys = input_keys
         self.epsilon = epsilon
         if epsilon_factors:
             self.epsilons_per_feature = [
@@ -37,14 +38,16 @@ class Attacks:
                     np.array(
                         [
                             np.load(f"{epsilon_dir}input_category_{i}.npy")[key]
-                            for key in input_keys[i]
+                            for key in self.input_keys[i]
                         ]
                     ).reshape(-1)
                 ).to(self.device)
-                for i in range(len(input_keys))
+                for i in range(len(self.input_keys))
             ]
         else:
-            self.epsilons_per_feature = [self.torch_one for i in range(len(input_keys))]
+            self.epsilons_per_feature = [
+                self.torch_one for i in range(len(self.input_keys))
+            ]
         self.iterations = iterations
         self.reduce = reduce
         self.restrict_impact = restrict_impact
@@ -275,12 +278,15 @@ class Attacks:
         return *[input.detach() for input in adversarial_inputs], truth
 
     def minimizer(self, inputs, truth, model, criterion):
+        softmax = torch.nn.Softmax(dim=-1)
+        model_training_state = model.training
         model.train()
+        softmax = torch.nn.Softmax(dim=-1)
         masks = self.create_default_integer_mask(inputs)
         min_loss = self.torch_inf
         batch_size = inputs[0].shape[0]
 
-        nominal_prediction = model.forward(*inputs)
+        nominal_prediction = softmax(model.forward(*inputs))
 
         adversarial_inputs = []
         for input in inputs:
@@ -291,7 +297,9 @@ class Attacks:
         optimizer = torch.optim.Adam(params=adversarial_inputs, lr=self.epsilon)
 
         for i in range(self.iterations):
-            loss = -torch.abs(nominal_prediction - model.forward(*adversarial_inputs))
+            loss = -torch.abs(
+                nominal_prediction - softmax(model.forward(*adversarial_inputs))
+            )
 
             optimizer.zero_grad(set_to_none=True)
             loss.backward(
@@ -314,5 +322,5 @@ class Attacks:
             ]
 
         best_fit = self.limit_relative_change(inputs, best_fit)
-        model.eval()
+        model.train(model_training_state)
         return *best_fit, truth
