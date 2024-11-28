@@ -280,8 +280,7 @@ class Attacks:
     def minimizer(self, inputs, truth, model, criterion):
         softmax = torch.nn.Softmax(dim=-1)
         model_training_state = model.training
-        model.train()
-        softmax = torch.nn.Softmax(dim=-1)
+        model.train()  # model has to be in training mode or gradients cannot be computed
         masks = self.create_default_integer_mask(inputs)
         min_loss = self.torch_inf
         batch_size = inputs[0].shape[0]
