@@ -317,7 +317,24 @@ class DeepJet(Classifier, nn.Module):
             cpf_list.append(cpf_features.cpu().numpy())
             npf_list.append(npf_features.cpu().numpy())
             vtx_list.append(vtx_features.cpu().numpy())
-
+        """
+        np.save(
+            "/net/data_cms3a/ajung/b-hive/DatasetConstructorTask/mod_offline_run3/part_2024_test_small/pgd_1/glob.npy",
+            np.concatenate(glob_list),
+        )
+        np.save(
+            "/net/data_cms3a/ajung/b-hive/DatasetConstructorTask/mod_offline_run3/part_2024_test_small/pgd_1/cpf.npy",
+            np.concatenate(cpf_list),
+        )
+        np.save(
+            "/net/data_cms3a/ajung/b-hive/DatasetConstructorTask/mod_offline_run3/part_2024_test_small/pgd_1/npf.npy",
+            np.concatenate(npf_list),
+        )
+        np.save(
+            "/net/data_cms3a/ajung/b-hive/DatasetConstructorTask/mod_offline_run3/part_2024_test_small/pgd_1/vtx.npy",
+            np.concatenate(vtx_list),
+        )
+        """
         predictions = np.concatenate(predictions)
         kinematics = np.concatenate(kinematics)
         truths = np.concatenate(truths)
