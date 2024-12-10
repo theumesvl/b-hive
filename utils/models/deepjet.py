@@ -319,22 +319,23 @@ class DeepJet(Classifier, nn.Module):
             vtx_list.append(vtx_features.cpu().numpy())
         """
         np.save(
-            "/net/data_cms3a/ajung/b-hive/DatasetConstructorTask/mod_offline_run3/part_2024_test_small/pgd_1/glob.npy",
+            "/net/data_cms3a/ajung/b-hive/DatasetConstructorTask/mod_offline_run3/part_2024_test_small/minimizer_15/glob.npy",
             np.concatenate(glob_list),
         )
         np.save(
-            "/net/data_cms3a/ajung/b-hive/DatasetConstructorTask/mod_offline_run3/part_2024_test_small/pgd_1/cpf.npy",
+            "/net/data_cms3a/ajung/b-hive/DatasetConstructorTask/mod_offline_run3/part_2024_test_small/minimizer_15/cpf.npy",
             np.concatenate(cpf_list),
         )
         np.save(
-            "/net/data_cms3a/ajung/b-hive/DatasetConstructorTask/mod_offline_run3/part_2024_test_small/pgd_1/npf.npy",
+            "/net/data_cms3a/ajung/b-hive/DatasetConstructorTask/mod_offline_run3/part_2024_test_small/minimizer_15/npf.npy",
             np.concatenate(npf_list),
         )
         np.save(
-            "/net/data_cms3a/ajung/b-hive/DatasetConstructorTask/mod_offline_run3/part_2024_test_small/pgd_1/vtx.npy",
+            "/net/data_cms3a/ajung/b-hive/DatasetConstructorTask/mod_offline_run3/part_2024_test_small/minimizer_15/vtx.npy",
             np.concatenate(vtx_list),
         )
         """
+
         predictions = np.concatenate(predictions)
         kinematics = np.concatenate(kinematics)
         truths = np.concatenate(truths)

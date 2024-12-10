@@ -296,9 +296,7 @@ class Attacks:
         optimizer = torch.optim.Adam(params=adversarial_inputs, lr=self.epsilon)
 
         for i in range(self.iterations):
-            loss = -torch.abs(
-                nominal_prediction - softmax(model.forward(*adversarial_inputs))
-            )
+            loss = -(nominal_prediction - softmax(model.forward(*adversarial_inputs)))**2
 
             optimizer.zero_grad(set_to_none=True)
             loss.backward(
