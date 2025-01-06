@@ -551,7 +551,7 @@ class Classifier_base(nn.Module):
         c_veto = (truth != 3) & (summed_jets != 0)
         bc_veto = (truth != 0) & (truth != 1) & (truth != 2) & (truth != 3) & (summed_jets != 0)
         l_veto = (truth != 4) & (truth != 5) & (summed_jets != 0)
-        no_veto = np.ones(b_veto.shape, dtype=np.bool)
+        no_veto = np.ones(b_veto.shape, dtype=bool)
 
         labels = ["bvsl", "bvsc", "cvsb", "cvsl", "bvsall", "uds_vs_g"]
         discs = [bvsl, bvsc, cvsb, cvsl, bvsall, uds_vs_g]

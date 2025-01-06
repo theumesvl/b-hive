@@ -258,13 +258,13 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         training_data = datasetClass(
             training_files,
             model=model,
+            config_truths=list(config['truths']),
             weights_file=weights_file,
             data_type="training",
             weighted_sampling=not (self.loss_weighting),
             bins_pt=config["bins_pt"],
             bins_eta=config["bins_eta"],
             verbose=self.verbose,
-            config=config,
             # process_weights=[
             #     config.get("process-weights", {}).get(proc, 1.0)
             #     for proc in config.get("processes", [])
@@ -276,6 +276,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         validation_data = datasetClass(
             validation_files,
             model=model,
+            config_truths=list(config['truths']),
             weights_file=weights_file,
             data_type="validation",
             weighted_sampling=not (self.loss_weighting),
@@ -284,7 +285,6 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             bins_pt=config["bins_pt"],
             bins_eta=config["bins_eta"],
             verbose=self.verbose,
-            config=config,
             # process_weights=[
             #     config.get("process-weights", {}).get(proc, 1.0)
             #     for proc in config.get("processes", [])

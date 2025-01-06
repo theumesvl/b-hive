@@ -12,6 +12,7 @@ class LZ4Dataset(IterableDataset):
         self,
         files,
         model,
+        config_truths,
         weights_file='',
         data_type="training",
         weighted_sampling=False,
@@ -52,12 +53,10 @@ class LZ4Dataset(IterableDataset):
 
         self.device = device
         self.model = model
+        self.config_truths = config_truths
 
         self.num_truth = len(model.classes.keys())
-        self.num_ele = 0
-
-        for list_truth in model.classes:
-            self.num_ele += len(model.classes[list_truth])
+        self.num_ele = len(config_truths)
 
     def __len__(self):
         return int(self.all_number_of_samples)
@@ -102,11 +101,10 @@ class LZ4Dataset(IterableDataset):
 
             truths = np.zeros(s.shape[0])
             labels = s[:,-(self.num_ele+1):-1]
-            idx = 0
             for index, (name, flavours) in enumerate(self.model.classes.items()):
                 for flav in flavours:
+                    idx = self.config_truths.index(flav)
                     truths[labels[:,idx] == 1] = index
-                    idx += 1
             weights = s[:, -1]
             process = s[:, -(self.num_ele+2)]
             s = s[:,:-(self.num_ele+2)]

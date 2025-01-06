@@ -128,6 +128,7 @@ class InferenceTask(
         test_data = datasetClass(
             files,
             model,
+            config_truths=list(config['truths']),
             data_type="test",
             histogram_training=histogram_test,
             bins_pt=config["bins_pt"],
