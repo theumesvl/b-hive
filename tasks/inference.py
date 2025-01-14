@@ -19,6 +19,7 @@ from utils.torch.DatasetLoader import DatasetLoader
 import law
 import numpy as np
 import torch
+import lz4.frame
 from torch.utils.data import DataLoader
 
 
@@ -119,18 +120,26 @@ class InferenceTask(
         print("Loading Dataset")
         files = self.input()["test_dataset"]["file_list"].load().split("\n")
 
-        histogram_test = self.input()["test_dataset"]["histogram"].load(
-            formatter="numpy", allow_pickle=True
-        )
-
         print("Initialize datasets")
         datasetClass = DatasetLoader(config["dataset"])
+        weights_file = (
+            self.input()["test_dataset"]["file_list"].path.strip("processed_files.txt") + "weights.lz4"
+        )
+        if config.get("processor", "PFCandidateAndVertexProcessing") == "LZ4FP16Processing":
+            dtype = np.float16
+        else:
+            dtype = np.float32
+        with lz4.frame.open(weights_file, mode='r') as fp:
+            output_data = fp.read()
+            weights = np.frombuffer(output_data, dtype=dtype).astype('float32')
+        chunk_size = int(len(weights) / len(files))
+        expected_test_number_of_batches = int((chunk_size * len(files)) // self.batch_size)
         test_data = datasetClass(
             files,
             model,
+            all_number_of_samples = chunk_size * len(files),
             config_truths=list(config['truths']),
             data_type="test",
-            histogram_training=histogram_test,
             bins_pt=config["bins_pt"],
             bins_eta=config["bins_eta"],
             verbose=self.verbose,
@@ -142,7 +151,7 @@ class InferenceTask(
             num_workers=self.n_threads,
             pin_memory=True,  # Pin Memory for faster CPU/GPU memory load
         )
-        test_dataloader.nits_expected = len(test_dataloader)
+        test_dataloader.nits_expected = expected_test_number_of_batches
 
         print("Start inference on", self.device)
         predictions, truths, kinematics, processes, inference_time = model.predict_model(

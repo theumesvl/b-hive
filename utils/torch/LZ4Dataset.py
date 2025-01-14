@@ -13,11 +13,10 @@ class LZ4Dataset(IterableDataset):
         files,
         model,
         config_truths,
-        weights_file='',
+        all_number_of_samples,
         data_type="training",
         weighted_sampling=False,
         device="cpu",
-        histogram_training=None,
         max_length=1,
         process_weights=None,
         bins_pt=None,
@@ -35,26 +34,13 @@ class LZ4Dataset(IterableDataset):
         self.data_type = data_type
         if data_type == "validation":
             self.data_type = "test"
-
-        if weights_file != '':  
-            with lz4.frame.open(weights_file, mode='r') as fp:
-                output_data = fp.read()
-                s = np.frombuffer(output_data, dtype='float32')
-                self.weights_sum = s.sum()
-        
-        if histogram_training is not None:
-            self.all_number_of_samples = histogram_training.sum()   
-        else:
-            self.all_number_of_samples = s.shape[0]*len(self.files)
-
+       
+        self.all_number_of_samples = all_number_of_samples
         self.weighted_sampling = weighted_sampling
-
         self.process_weights = process_weights
-
         self.device = device
         self.model = model
         self.config_truths = config_truths
-
         self.num_truth = len(model.classes.keys())
         self.num_ele = len(config_truths)
 
@@ -63,9 +49,6 @@ class LZ4Dataset(IterableDataset):
 
     def __getitem__(self, index):
         raise NotImplementedError
-
-    def get_expected_number_of_batches(self, batch_size):
-        return int(self.weights_sum // batch_size)
 
     def shuffleFileList(self):
         np.random.shuffle(self.files)

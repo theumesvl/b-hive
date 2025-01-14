@@ -154,7 +154,11 @@ def merge_datasets(
 
                     chunk = np.zeros((chunk_size, dim), dtype=dtype)
                     chunk[: n_samples - index_range] = data[index_range:]
-                    n_chunk = n_samples - index_range    
+                    n_chunk = n_samples - index_range   
+
+                progress.update(task, advance=1, description=f"Merging...")
+                progress.columns[-1].text_format = "{}/{} its".format(i+1, len(files))
+            progress.update(task, completed=len(files))
             if not any_file_created:
                 raise ValueError("Expected at least one file to be created, but none were. This is probably to the small amount of data and/or large chunk size.")
         else:

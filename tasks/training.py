@@ -3,6 +3,7 @@ import luigi
 import numpy as np
 import os
 import torch
+import lz4.frame
 from torch.utils.data import DataLoader
 from pathlib import Path
 from IPython import embed
@@ -253,15 +254,27 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         weights_file = (
             self.input()["file_list"].path.strip("processed_files.txt") + "weights.lz4"
         )
+        if config.get("processor", "PFCandidateAndVertexProcessing") == "LZ4FP16Processing":
+            dtype = np.float16
+        else:
+            dtype = np.float32
+            
+        with lz4.frame.open(weights_file, mode='r') as fp:
+            output_data = fp.read()
+            weights = np.frombuffer(output_data, dtype=dtype).astype('float32')
+        chunk_size = int(len(weights) / len(files))
+        expected_train_number_of_batches = int(weights[: n_train * chunk_size].sum() // self.batch_size)
+        expected_val_number_of_batches   = int(weights[n_train * chunk_size:].sum() // self.batch_size)
         
         # Define the training and validation datasets
         training_data = datasetClass(
             training_files,
             model=model,
             config_truths=list(config['truths']),
-            weights_file=weights_file,
+            all_number_of_samples=int(len(weights)*0.8),
             data_type="training",
             weighted_sampling=not (self.loss_weighting),
+            device=self.device,
             bins_pt=config["bins_pt"],
             bins_eta=config["bins_eta"],
             verbose=self.verbose,
@@ -277,11 +290,10 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             validation_files,
             model=model,
             config_truths=list(config['truths']),
-            weights_file=weights_file,
+            all_number_of_samples=len(weights) - int(len(weights)*0.8),
             data_type="validation",
             weighted_sampling=not (self.loss_weighting),
             device=self.device,
-            histogram_training=None,
             bins_pt=config["bins_pt"],
             bins_eta=config["bins_eta"],
             verbose=self.verbose,
@@ -302,11 +314,11 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             num_workers=self.n_threads,
         )
 
-        if len(training_dataloader) == 0:
+        if expected_train_number_of_batches == 0:
             raise ValueError("The training DataLoader is empty. Ensure that you have enough data to form at least one batch.")
 
         # Expected number of iterations
-        training_dataloader.nits_expected = len(training_dataloader)
+        training_dataloader.nits_expected = expected_train_number_of_batches
 
         #print(f"Memory usage after initializing training dataloader: {check_memory_usage():.4f} GiB")
 
@@ -318,7 +330,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             num_workers=self.n_threads,
         )
         
-        validation_dataloader.nits_expected = len(validation_dataloader)
+        validation_dataloader.nits_expected = expected_val_number_of_batches
 
         #print(f"Memory usage after initializing validation dataloader: {check_memory_usage():.4f} GiB")
         

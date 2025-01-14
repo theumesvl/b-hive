@@ -214,7 +214,7 @@ class Classifier_base(nn.Module):
             BarColumn(bar_width=None),
             TaskProgressColumn(),
             TimeRemainingColumn(),
-            TextColumn("0/? its"),
+            TextColumn(f"0/{dataloader.nits_expected} its"),
             expand=True,
         ) as progress:
             N = 1
@@ -248,12 +248,7 @@ class Classifier_base(nn.Module):
                     task, advance=1, description=f"Inference...   | Loss: {loss:.2f}"
                 )
                 progress.columns[-1].text_format = "{}/{} its".format(
-                    N // dataloader.batch_size,
-                    (
-                        "?"
-                        if dataloader.nits_expected == len(dataloader)
-                        else f"~{dataloader.nits_expected}"
-                    ),
+                    N // dataloader.batch_size, dataloader.nits_expected
                 )
             progress.update(task, completed=dataloader.nits_expected)
        
@@ -356,15 +351,10 @@ class Classifier_base(nn.Module):
                     task, advance=1, description=f"Training...   | Loss: {loss:.4f}, lr: {curr_lr:.5f}"
                 )
                 progress.columns[-1].text_format = "{}/{} its".format(
-                    N // dataloader.batch_size,
-                    (
-                        "?"
-                        if dataloader.nits_expected == len(dataloader)
-                        else f"~{dataloader.nits_expected}"
-                    ),
+                    N // dataloader.batch_size, f"~{dataloader.nits_expected}"
                 )
             progress.update(task, completed=dataloader.nits_expected)
-        dataloader.nits_expected = N // dataloader.batch_size
+        #dataloader.nits_expected = N // dataloader.batch_size
         accuracy /= N
         print("  ", f"Average loss: {np.array(losses).mean():.4f}")
         print("  ", f"Average accuracy: {float(100*accuracy):.4f}")
@@ -423,12 +413,7 @@ class Classifier_base(nn.Module):
                     task, advance=1, description=f"Validation... | Loss: {loss:.2f}"
                 )
                 progress.columns[-1].text_format = "{}/{} its".format(
-                    N // dataloader.batch_size,
-                    (
-                        "?"
-                        if dataloader.nits_expected == len(dataloader)
-                        else f"~{dataloader.nits_expected}"
-                    ),
+                    N // dataloader.batch_size, f"~{dataloader.nits_expected}"
                 )
             progress.update(task, completed=dataloader.nits_expected)
         dataloader.nits_expected = N // dataloader.batch_size

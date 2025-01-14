@@ -757,9 +757,6 @@ class UParT_v0(Classifier_base):
                 truth = truth.type(torch.LongTensor).to(device)
                 w = w.float().to(device)
 
-                if truth.shape[0] != 512:
-                    print(f"\nSHAPE of truth = {truth.shape}\n")
-
                 if self.use_torch_compile:
                     pred, loss = self.compile_step(x, truth, loss_fn, attack=attack, device=device, mixed_precision=self.mixed_precision)
                 else:
@@ -950,12 +947,7 @@ class UParT_v0(Classifier_base):
                     task, advance=1, description=f"Inference...   | Loss: {loss:.2f}"
                 )
                 progress.columns[-1].text_format = "{}/{} its".format(
-                    N // dataloader.batch_size,
-                    (
-                        "?"
-                        if dataloader.nits_expected == len(dataloader)
-                        else f"~{dataloader.nits_expected}"
-                    ),
+                    N // dataloader.batch_size, dataloader.nits_expected
                 )
             progress.update(task, completed=dataloader.nits_expected)
 
