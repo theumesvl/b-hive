@@ -8,9 +8,10 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 from functools import partial
 import numpy as np
 from typing import List
+from scipy.special import softmax
 
-from utils.torch import LZ4Dataset
 from utils.models.base_model import Classifier_base
+
 
 class InputConv(nn.Module):
 
@@ -102,7 +103,35 @@ class InputProcess(nn.Module):
         out = torch.transpose(out, 1, 2)
         
         return out
-    
+
+class InputProcess_HLT(nn.Module):
+
+    def __init__(self, cpf_dim, vtx_dim, embed_dim, **kwargs):
+        super(InputProcess_HLT, self).__init__(**kwargs)
+        
+        self.cpf_bn0 = torch.nn.BatchNorm1d(cpf_dim, eps = 0.001, momentum = 0.1)
+        self.cpf_conv1 = InputConv(cpf_dim,embed_dim)
+        self.cpf_conv3 = InputConv(embed_dim*1,embed_dim)
+
+        self.vtx_bn0 = torch.nn.BatchNorm1d(vtx_dim, eps = 0.001, momentum = 0.1)
+        self.vtx_conv1 = InputConv(vtx_dim,embed_dim)
+        self.vtx_conv3 = InputConv(embed_dim*1,embed_dim)
+
+    def forward(self, cpf, vtx):
+                
+        cpf = self.cpf_bn0(torch.transpose(cpf, 1, 2))
+        cpf = self.cpf_conv1(cpf, cpf, skip = False)
+        cpf = self.cpf_conv3(cpf, cpf, skip = False)
+
+        vtx = self.vtx_bn0(torch.transpose(vtx, 1, 2))
+        vtx = self.vtx_conv1(vtx, vtx, skip = False)
+        vtx = self.vtx_conv3(vtx, vtx, skip = False)
+
+        out = torch.cat((cpf,vtx), dim = 2)
+        out = torch.transpose(out, 1, 2)
+        
+        return out
+        
 class DenseClassifier(nn.Module):
 
     def __init__(self, embed_dim, **kwargs):
@@ -244,7 +273,7 @@ def _get_activation_fn(activation):
     raise RuntimeError("activation should be relu/gelu, not {}".format(activation))
 
 
-class DeepJetTransformer(Classifier_base, nn.Module):
+class DeepJetTransformer(Classifier_base):
 
     cpf_candidates = [
         "Cpfcan_ptrel",
@@ -286,18 +315,15 @@ class DeepJetTransformer(Classifier_base, nn.Module):
         build_4v=True,
         **kwargs
     ):
-        super(DeepJetTransformer, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self.config = config
-    
         self.for_inference = for_inference
         self.num_enc_layers = num_enc
 
-        self.len_cpf_fts = len(self.cpf_candidates) if hasattr(self,'cpf_candidates') else self._calculate_feature_length('cpf_candidates', 'cpf_custom_features')
-        self.len_npf_fts = len(self.npf_candidates) if hasattr(self,'npf_candidates') else self._calculate_feature_length('npf_candidates', 'npf_custom_features')
-        self.len_vtx_fts = len(self.vtx_features) if hasattr(self,'vtx_features') else self._calculate_feature_length('vtx_features', 'vtx_custom_features')
+        _, cpf_dim, npf_dim, vtx_dim = self.all_model_features_length()  
         
-        self.InputProcess = InputProcess(self.len_cpf_fts, self.len_npf_fts, self.len_vtx_fts, embed_dim)
+        self.InputProcess = InputProcess(cpf_dim, npf_dim, vtx_dim, embed_dim)
         self.Linear = nn.Linear(embed_dim, num_classes)
         self.DenseClassifier = DenseClassifier(embed_dim)
         self.Pooling = AttentionPooling()
@@ -320,6 +346,232 @@ class DeepJetTransformer(Classifier_base, nn.Module):
         enc = self.Pooling(enc)
         
         x = self.DenseClassifier(enc)
+        output = self.Linear(x)
+        
+        if self.for_inference:
+            output = torch.softmax(output, dim=1)
+
+        return output
+
+
+class DeepJetTransformerHLT(Classifier_base):
+
+    # Define classes used by model and connect it to the config definitions
+    classes = {
+        "b": ["label_b"],
+        "c": ["label_c"],
+        "uds": ["label_uds"],
+        "g": ["label_g"],
+        "taup": ["label_taup"],
+        "taum": ["label_taum"],
+    }
+    # Features that have integer dtype and should not be changed during adv attacks
+    integer_features = {
+        "global_features": ["jet_elf", "jet_muf", "jet_ncand", "jet_nbhad", "jet_nchad"],
+        "cpf_candidates": ["jet_pfcand_calofraction", "jet_pfcand_hcalfraction", "jet_pfcand_frompv", "jet_pfcand_id",
+                             "jet_pfcand_charge", "jet_pfcand_track_qual", "jet_pfcand_track_chi2", "jet_pfcand_npixhits", 
+                             "jet_pfcand_nstriphits", "jet_pfcand_nlostinnerhits"],
+        "npf_candidates": [],
+        "vtx_features": ["jet_sv_ntrack"],
+    }
+
+    def get_inpt(self, x, truth=None, loss_fn=None, attack=None, device='cpu'):
+
+        glob, cpf, npf, vtx = x.split(self.feature_lengths.tolist(), dim=1)
+        
+        glob = glob.reshape(glob.shape[0], -1)
+        cpf = cpf.reshape(cpf.shape[0], self.input_dims[1][0], -1)
+        npf = npf.reshape(npf.shape[0], self.input_dims[2][0], 0)
+        vtx = vtx.reshape(vtx.shape[0], self.input_dims[3][0], -1)
+
+        if attack is not None:
+            (
+                glob,
+                cpf,
+                npf,
+                vtx,
+                truth,
+            ) = attack(
+                [
+                    feature.float().to(device)
+                    for feature in [
+                        glob,
+                        cpf,
+                        npf,
+                        vtx,
+                        ]
+                    ],
+                truth.type(torch.LongTensor).to(device),
+                self,
+                loss_fn,
+                device,
+            ) 
+        
+        return (glob.detach(), cpf.detach(), npf.detach(), vtx.detach()), truth
+
+    def __init__(
+        self,
+        config,
+        num_classes=6,
+        num_enc=3,
+        num_head=8,
+        embed_dim=128,
+        for_inference=False,
+        build_4v=True,
+        **kwargs
+    ):
+        super().__init__(**kwargs)
+        
+        self.config = config
+        self.for_inference = for_inference
+        self.num_enc_layers = num_enc
+
+        _, cpf_dim, _, vtx_dim = self.all_model_features_length()  
+        
+        self.InputProcess = InputProcess_HLT(cpf_dim, vtx_dim, embed_dim)
+        self.Linear = nn.Linear(embed_dim, num_classes)
+        self.DenseClassifier = DenseClassifier(embed_dim)
+        self.Pooling = AttentionPooling()
+
+        self.EncoderLayer = HF_TransformerEncoderLayer(
+            d_model=embed_dim, nhead=num_head, dropout=0.1
+        )
+        self.Encoder = HF_TransformerEncoder(self.EncoderLayer, num_layers=num_enc)
+    
+    def forward(self, inpt):
+
+        global_features, cpf_features, _, vtx_features = inpt[0], inpt[1], inpt[2], inpt[3]
+        cpf, vtx = cpf_features, vtx_features
+
+        padding_mask = torch.cat((cpf[:,:,:1],vtx[:,:,:1]), dim = 1)
+        padding_mask = torch.eq(padding_mask[:,:,0], 0.0)
+        
+        enc = self.InputProcess(cpf, vtx)
+        enc = self.Encoder(enc, padding_mask)
+        enc = self.Pooling(enc)
+        
+        x = self.DenseClassifier(enc)
+        output = self.Linear(x)
+        
+        if self.for_inference:
+            output = torch.softmax(output, dim=1)
+
+        return output
+        
+    def calculate_roc_list(
+        self,
+        predictions,
+        truth,
+    ):
+        if np.abs(np.mean(np.sum(predictions, axis=-1)) - 1) > 1e-3:
+            predictions = softmax(predictions, axis=-1)
+
+        b_index   = list(self.classes).index('b')
+        c_index   = list(self.classes).index('c')
+        uds_index = list(self.classes).index('uds')
+        g_index   = list(self.classes).index('g')
+        taup_index = list(self.classes).index('taup')
+        taum_index = list(self.classes).index('taum')
+        
+        b_jets   = (truth == b_index)
+        tau_jets = (truth == taup_index) | (truth == taum_index)
+        c_jets   = (truth == c_index)
+        uds_jets = (truth == uds_index)
+        g_jets   = (truth == g_index)
+        l_jets   = uds_jets | g_jets
+        summed_jets = b_jets + c_jets + l_jets + tau_jets
+
+        b_pred = predictions[:, b_index]
+        taup_pred = predictions[:, taup_index]
+        taum_pred = predictions[:, taum_index]
+        c_pred = predictions[:, c_index]
+        uds_pred = predictions[:, uds_index]
+        g_pred = predictions[:, g_index]
+        l_pred = predictions[:, [uds_index, g_index]].sum(axis=1)
+
+        bvsl = np.where((b_pred + l_pred) > 0, (b_pred) / (b_pred + l_pred), -1)
+        bvsc = np.where((b_pred + c_pred) > 0, (b_pred) / (b_pred + c_pred), -1)
+        cvsb = np.where((b_pred + c_pred) > 0, (c_pred) / (b_pred + c_pred), -1)
+        cvsl = np.where((l_pred + c_pred) > 0, (c_pred) / (l_pred + c_pred), -1)
+        bvsall = np.where(
+            (b_pred + l_pred + c_pred + taup_pred + taum_pred) > 0, (b_pred) / (b_pred + l_pred + c_pred + taup_pred + taum_pred), -1
+        )
+        uds_vs_g = np.where((uds_pred + g_pred) > 0, (uds_pred) / (uds_pred + g_pred), -1)
+
+        tau_veto = (truth != taup_index) & (truth != taum_index) & (summed_jets != 0)
+        b_veto = (truth != b_index) & tau_veto & (summed_jets != 0)
+        c_veto = (truth != c_index) & tau_veto & (summed_jets != 0)
+        bc_veto = b_veto & c_veto
+        l_veto = (truth != uds_index) & (truth != g_index) & tau_veto & (summed_jets != 0)
+        no_veto = np.ones(b_veto.shape, dtype=bool)
+
+        labels = ["bvsl", "bvsc", "cvsb", "cvsl", "bvsall", "uds_vs_g"]
+        discs = [bvsl, bvsc, cvsb, cvsl, bvsall, uds_vs_g]
+        vetos = [c_veto, l_veto, l_veto, b_veto, no_veto, bc_veto]
+        truths = [b_jets, b_jets, c_jets, c_jets, b_jets, uds_jets]
+        xlabels = [
+            "b-identification",
+            "b-identification",
+            "c-identification",
+            "c-identification",
+            "b-identification",
+            "uds-identification",
+        ]
+        ylabels = ["light mis-id.", "c mis-id", "b mis-id.", "light mis-id.", "mis-id.", "gluons mis-id."]
+
+        return discs, truths, vetos, labels, xlabels, ylabels
+
+
+
+class GlobalDeepJetTransformerHLT(DeepJetTransformerHLT):
+        
+    def __init__(
+        self,
+        config,
+        num_classes=6,
+        num_enc=3,
+        num_head=8,
+        embed_dim=128,
+        for_inference=False,
+        build_4v=True,
+        **kwargs
+    ):
+        super().__init__(config, **kwargs)
+
+        self.config = config
+        self.for_inference = for_inference
+        self.num_enc_layers = num_enc
+
+        global_dim, cpf_dim, _, vtx_dim = self.all_model_features_length()
+        
+        self.global_bn = torch.nn.BatchNorm1d(global_dim, eps=0.001, momentum=0.6)
+        self.InputProcess = InputProcess_HLT(cpf_dim, vtx_dim, embed_dim)
+        self.Linear = nn.Linear(embed_dim + global_dim, num_classes)
+        self.DenseClassifier = DenseClassifier(embed_dim + global_dim)
+        self.Pooling = AttentionPooling()
+
+        self.EncoderLayer = HF_TransformerEncoderLayer(
+            d_model=embed_dim, nhead=num_head, dropout=0.1
+        )
+        self.Encoder = HF_TransformerEncoder(self.EncoderLayer, num_layers=num_enc)
+    
+    def forward(self, inpt):
+
+        global_features, cpf_features, _, vtx_features = inpt[0], inpt[1], inpt[2], inpt[3]
+        cpf, vtx = cpf_features, vtx_features
+
+        global_features = self.global_bn(global_features)
+
+        padding_mask = torch.cat((cpf[:,:,:1],vtx[:,:,:1]), dim = 1)
+        padding_mask = torch.eq(padding_mask[:,:,0], 0.0)
+        
+        enc = self.InputProcess(cpf, vtx)
+        enc = self.Encoder(enc, padding_mask)
+        enc = self.Pooling(enc)
+
+        fts = torch.cat((global_features, enc), dim=1)
+        
+        x = self.DenseClassifier(fts)
         output = self.Linear(x)
         
         if self.for_inference:

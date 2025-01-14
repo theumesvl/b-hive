@@ -54,14 +54,28 @@ class Classifier_base(nn.Module):
 
     def create_integers_defaults(self):
 
-        # Create integers for each feature group
+        # Create indexes for each integer feature group
         self.integers = [self._create_feature_indices(features, key) for key, features in self.integer_features.items()]
-
         # Defaults for all feature groups
         self.defaults = [torch.tensor([0]) for _ in self.integer_features]
         
+    def model_feature_length(self, attr_name, attr_name_2):
+        """
+        Returns len(getattr(self, attr_name)) if it exists,
+        otherwise calls the provided calculate_feature_length.
+        """
+        if hasattr(self, attr_name):
+            return len(getattr(self, attr_name))
+        return self.calculate_feature_length(attr_name, attr_name_2)
 
-    def _calculate_feature_length(self, base_key, custom_key=None):
+    def all_model_features_length(self):
+        global_dim = self.model_feature_length('global_features', 'global_custom_features')
+        cpf_dim = self.model_feature_length('cpf_candidates', 'cpf_custom_features')
+        npf_dim = self.model_feature_length('npf_candidates', 'npf_custom_features')
+        vtx_dim = self.model_feature_length('vtx_features', 'vtx_custom_features')
+        return global_dim, cpf_dim, npf_dim, vtx_dim
+        
+    def calculate_feature_length(self, base_key, custom_key=None):
         base_length = 0
         if base_key in self.config:
             base_length += len(self.config[base_key])
@@ -69,12 +83,12 @@ class Classifier_base(nn.Module):
             base_length += len(self.config[custom_key])
         return base_length
     
-    def create_feature_lengths(self):
+    def create_feature_shapes(self):
         # Constructions of input shape from config.yaml file
-        len_glob_fts_full = self._calculate_feature_length('global_features', 'global_custom_features')
-        len_cpf_fts_full = self._calculate_feature_length('cpf_candidates', 'cpf_custom_features')
-        len_npf_fts_full = self._calculate_feature_length('npf_candidates', 'npf_custom_features')
-        len_vtx_fts_full = self._calculate_feature_length('vtx_features', 'vtx_custom_features')
+        len_glob_fts_full = self.calculate_feature_length('global_features', 'global_custom_features')
+        len_cpf_fts_full = self.calculate_feature_length('cpf_candidates', 'cpf_custom_features')
+        len_npf_fts_full = self.calculate_feature_length('npf_candidates', 'npf_custom_features')
+        len_vtx_fts_full = self.calculate_feature_length('vtx_features', 'vtx_custom_features')
         
         self.input_dims = [
             (1,                               len_glob_fts_full),

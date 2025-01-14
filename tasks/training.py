@@ -101,7 +101,7 @@ def load_resume_training(model, path, device, output, optimizer=None, scheduler=
 class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, BaseTask):
     loss_weighting = luigi.BoolParameter(
         False,
-        description="Whether to weight the loss or use weighted sampling from the dataset.",
+        description="Whether to weight the loss or use weighted sampling from the dataset (default).",
     )
 
     resume_training = luigi.BoolParameter(
@@ -119,8 +119,11 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         description="Number of epochs to extend a training.",
     )
 
-    train_val_split = 0.8
-
+    train_val_split = luigi.FloatParameter(
+        default=0.85,
+        description="The ratio to divide dataset for train/validation. Default: 0.85"
+    )
+    
     def requires(self):
         return DatasetConstructorTask.req(self)
 
@@ -158,6 +161,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         if not os.path.exists(files[-1]):
             files = files[:-1]
 
+        assert (self.train_val_split <= 1) and (self.train_val_split >= 0), "train_val_split should be between 0 and 1!"
         n_train = max(
             (1, int(len(files) * self.train_val_split))
         )  # has at least one training file
@@ -168,7 +172,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             print(
                 "No validation files found. Please check your dataset. Most likely you only have one file!"
             )
-            print("Using the trainingfile for validation")
+            print("Using the training file for validation")
             print()
             validation_files = training_files
         if not (isinstance(training_files, list)):
@@ -203,7 +207,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         if issubclass(type(model := BTaggingModels(self.model_name, config)), torch.nn.Module):
             model = model.to(self.device)
             model.create_integers_defaults()
-            model.create_feature_lengths()
+            model.create_feature_shapes()
             model.mixed_precision = self.mixed_precision
             model.use_torch_compile = self.use_torch_compile
             optimizer = OptimizerLoader(
@@ -278,6 +282,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             bins_pt=config["bins_pt"],
             bins_eta=config["bins_eta"],
             verbose=self.verbose,
+            config=config
             # process_weights=[
             #     config.get("process-weights", {}).get(proc, 1.0)
             #     for proc in config.get("processes", [])
@@ -297,6 +302,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             bins_pt=config["bins_pt"],
             bins_eta=config["bins_eta"],
             verbose=self.verbose,
+            config=config
             # process_weights=[
             #     config.get("process-weights", {}).get(proc, 1.0)
             #     for proc in config.get("processes", [])
