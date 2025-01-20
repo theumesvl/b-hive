@@ -278,9 +278,7 @@ class Classifier_base(nn.Module):
         return predictions, truths, kinematics, processes, elapsed_column.elapsed_time
     
     #@torch.compile(mode='max-autotune')
-    def step(self, x, truth, loss_fn, attack=None, device="cpu", mixed_precision=True):
-
-        inpt, truth = self.get_inpt(x, truth=truth, loss_fn=loss_fn, attack=attack, device=device)
+    def step(self, inpt, truth, loss_fn, device="cpu", mixed_precision=True):
         
         if mixed_precision:
             with torch.autocast(device):
@@ -328,10 +326,12 @@ class Classifier_base(nn.Module):
                 truth = truth.type(torch.LongTensor).to(device, non_blocking=True)
                 w = w.float().to(device, non_blocking=True)
 
+                inpt, truth = self.get_inpt(x, truth=truth, loss_fn=loss_fn, attack=attack, device=device)
+                
                 if self.use_torch_compile:
-                    pred, loss = self.compile_step(x, truth, loss_fn, attack=attack, device=device, mixed_precision=self.mixed_precision)
+                    pred, loss = self.compile_step(inpt, truth, loss_fn, device=device, mixed_precision=self.mixed_precision)
                 else:
-                    pred, loss = self.step(x, truth, loss_fn, attack=attack, device=device, mixed_precision=self.mixed_precision)
+                    pred, loss = self.step(inpt, truth, loss_fn, device=device, mixed_precision=self.mixed_precision)
 
                 if torch.isnan(loss).any():
                     raise ValueError("Loss contains NaN values! Something's wrong with calculation, please check.")
@@ -404,10 +404,12 @@ class Classifier_base(nn.Module):
                 w = w.float().to(device, non_blocking=True)
 
                 with torch.no_grad():
+                    inpt, truth = self.get_inpt(x, truth=truth, loss_fn=loss_fn, attack=None, device=device)
+                    
                     if self.use_torch_compile:
-                        pred, loss = self.compile_step(x, truth, loss_fn, attack=None, device=device, mixed_precision=self.mixed_precision)
+                        pred, loss = self.compile_step(inpt, truth, loss_fn, device=device, mixed_precision=self.mixed_precision)
                     else:
-                        pred, loss = self.step(x, truth, loss_fn, attack=None, device=device, mixed_precision=self.mixed_precision)
+                        pred, loss = self.step(inpt, truth, loss_fn, device=device, mixed_precision=self.mixed_precision)
                         
                     losses.append(loss.item())
 
