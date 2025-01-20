@@ -85,13 +85,54 @@ class DeepJetHLT(Classifier_base):
 
     # Define classes used by model and connect it to the config definitions
     classes = {
-        "b": ["label_b"],
-        "c": ["label_c"],
-        "uds": ["label_uds"],
+        "b": ["label_b", "label_gbb", "label_bb", "label_leptonicb", "label_leptonicbc"],
+        "c": ["label_c", "label_gcc", "label_cc"],
+        "uds": ["label_ud", "label_s"],
         "g": ["label_g"],
         "taup": ["label_taup"],
         "taum": ["label_taum"],
     }
+    cpf_candidates = [
+        "jet_pfcand_deta",
+        "jet_pfcand_dphi",
+        "jet_pfcand_pt_log",
+        "jet_pfcand_energy_log",
+        "jet_pfcand_eta",
+        "jet_pfcand_charge",
+        "jet_pfcand_frompv",
+        "jet_pfcand_nlostinnerhits",
+        "jet_pfcand_track_chi2",
+        "jet_pfcand_track_qual",
+        "jet_pfcand_dz",
+        "jet_pfcand_dzsig",
+        "jet_pfcand_dxy",
+        "jet_pfcand_dxysig",
+        "jet_pfcand_etarel",
+        "jet_pfcand_pperp_ratio",
+        "jet_pfcand_ppara_ratio",
+        "jet_pfcand_trackjet_d3d",
+        "jet_pfcand_trackjet_d3dsig",
+        "jet_pfcand_trackjet_dist",
+        "jet_pfcand_trackjet_decayL",
+        "jet_pfcand_npixhits",
+        "jet_pfcand_nstriphits",
+         #"pfcand_mask"
+    ]
+    vtx_features = [
+        "jet_sv_deta",
+        "jet_sv_dphi",
+        "jet_sv_pt_log",
+        "jet_sv_mass",
+        "jet_sv_eta",
+        "jet_sv_ntrack",
+        "jet_sv_chi2",
+        "jet_sv_dxy",
+        "jet_sv_dxysig",
+        "jet_sv_d3d",
+        "jet_sv_d3dsig"
+        #"sv_mask"
+    ]
+    
     # Features that have integer dtype and should not be changed during adv attacks
     integer_features = {
         "global_features": ["jet_elf", "jet_muf", "jet_ncand", "jet_nbhad", "jet_nchad"],
@@ -110,6 +151,12 @@ class DeepJetHLT(Classifier_base):
         cpf = cpf.reshape(cpf.shape[0], self.input_dims[1][0], -1)
         npf = npf.reshape(npf.shape[0], self.input_dims[2][0], 0)
         vtx = vtx.reshape(vtx.shape[0], self.input_dims[3][0], -1)
+
+        # Subselect features
+        glob = self._subselect_features(glob, "global_features")
+        cpf = self._subselect_features(cpf, "cpf_candidates")
+        npf = self._subselect_features(npf, "npf_candidates")
+        vtx = self._subselect_features(vtx, "vtx_features")
 
         if attack is not None:
             (
@@ -150,16 +197,16 @@ class DeepJetHLT(Classifier_base):
 
         self.config = config
 
-        global_dim, cpf_dim, _, vtx_dim = self.all_model_features_length()  
+        _, cpf_dim, _, vtx_dim = self.all_model_features_length()  
+        
         cpf_conv = [cpf_dim] + cpf_conv
         vtx_conv = [vtx_dim] + vtx_conv
         
         self.InputProcess = InputProcess_HLT(cpf_conv, vtx_conv)
 
-        dense_clas_dim_full = [sum(lstm_dim) + global_dim] + dense_clas_dim
+        dense_clas_dim_full = [sum(lstm_dim)] + dense_clas_dim
         self.DenseClassifier = DenseClassifier(dense_clas_dim_full)
 
-        self.global_bn = torch.nn.BatchNorm1d(global_dim, eps=0.001, momentum=0.6)
         self.cpf_lstm = torch.nn.LSTM(
             input_size=cpf_conv[-1], hidden_size=lstm_dim[0], num_layers=n_layers_lstm, batch_first=True
         )
@@ -177,10 +224,11 @@ class DeepJetHLT(Classifier_base):
         
     def forward(self, inpt):
          
-        global_features, cpf_features, _, vtx_features = inpt[0], inpt[1], inpt[2], inpt[3]
-        
-        global_features = self.global_bn(global_features)
-        
+        _, cpf_features, _, vtx_features = inpt[0], inpt[1], inpt[2], inpt[3]
+
+        #print(f"cpf_features.shape = {cpf_features.shape}")
+        #print(f"vtx_features.shape = {vtx_features.shape}")
+                
         cpf, vtx = self.InputProcess(cpf_features, vtx_features)
         
         cpf = self.cpf_lstm(torch.flip(cpf, dims=[1]))[0][:, -1]
@@ -189,7 +237,7 @@ class DeepJetHLT(Classifier_base):
         vtx = self.vtx_lstm(torch.flip(vtx, dims=[1]))[0][:, -1]
         vtx = self.vtx_dropout(self.vtx_bn(vtx))
 
-        fts = torch.cat((global_features, cpf, vtx), dim=1)
+        fts = torch.cat((cpf, vtx), dim=1)
         fts = self.DenseClassifier(fts)
 
         output = self.Linear(fts)

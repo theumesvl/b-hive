@@ -121,6 +121,74 @@ truths:
       - 5
     - jet_hflav:
       - 5
+    - jet_genmatch_pt:
+      - {">": 0}
+    - isB:
+      - 1
+  label_gbb: 
+    # every item is connected with an AND!
+    - jet_muflav:
+      - 0
+    - jet_elflav:
+      - 0
+    - jet_tauflav:
+      - 0
+    - jet_genmatch_hflav:
+      - 5
+    - jet_hflav:
+      - 5
+    - jet_genmatch_pt:
+      - {">": 0}
+    - isGBB:
+      - 1
+  label_bb: 
+    # every item is connected with an AND!
+    - jet_muflav:
+      - 0
+    - jet_elflav:
+      - 0
+    - jet_tauflav:
+      - 0
+    - jet_genmatch_hflav:
+      - 5
+    - jet_hflav:
+      - 5
+    - jet_genmatch_pt:
+      - {">": 0}
+    - isBB:
+      - 1
+  label_leptonicb: 
+    # every item is connected with an AND!
+    - jet_muflav:
+      - 0
+    - jet_elflav:
+      - 0
+    - jet_tauflav:
+      - 0
+    - jet_genmatch_hflav:
+      - 5
+    - jet_hflav:
+      - 5
+    - jet_genmatch_pt:
+      - {">": 0}
+    - isLeptonicB:
+      - 1
+  label_leptonicbc: 
+    # every item is connected with an AND!
+    - jet_muflav:
+      - 0
+    - jet_elflav:
+      - 0
+    - jet_tauflav:
+      - 0
+    - jet_genmatch_hflav:
+      - 5
+    - jet_hflav:
+      - 5
+    - jet_genmatch_pt:
+      - {">": 0}
+    - isLeptonicB_C:
+      - 1
   label_c:
     - jet_muflav:
       - 0
@@ -132,7 +200,41 @@ truths:
       - 4
     - jet_hflav:
       - 4
-  label_uds:
+    - jet_genmatch_pt:
+      - {">": 0}
+    - isC:
+      - 1
+  label_gcc:
+    - jet_muflav:
+      - 0
+    - jet_elflav:
+      - 0
+    - jet_tauflav:
+      - 0
+    - jet_genmatch_hflav:
+      - 4
+    - jet_hflav:
+      - 4
+    - jet_genmatch_pt:
+      - {">": 0}
+    - isGCC:
+      - 1
+  label_cc:
+    - jet_muflav:
+      - 0
+    - jet_elflav:
+      - 0
+    - jet_tauflav:
+      - 0
+    - jet_genmatch_hflav:
+      - 4
+    - jet_hflav:
+      - 4
+    - jet_genmatch_pt:
+      - {">": 0}
+    - isCC:
+      - 1
+  label_ud:
     - jet_muflav:
       - 0
     - jet_elflav:
@@ -161,6 +263,43 @@ truths:
        - 1
        - 2
        - 3
+    - jet_genmatch_pt:
+      - {">": 0}
+    - isUD:
+      - 1
+  label_s:
+    - jet_muflav:
+      - 0
+    - jet_elflav:
+      - 0
+    - jet_tauflav:
+      - 0
+    - jet_genmatch_hflav:
+      - 0
+    - jet_hflav: 
+      - 0
+    - jet_genmatch_pflav: 
+       # every item is connected with an OR!
+       - -3
+       - -2
+       - -1
+       - 0
+       - 1
+       - 2
+       - 3
+    - jet_pflav: 
+       # every item is connected with an OR!
+       - -3
+       - -2
+       - -1
+       - 0
+       - 1
+       - 2
+       - 3
+    - jet_genmatch_pt:
+      - {">": 0}
+    - isS:
+      - 1
   label_g:
     - jet_muflav:
       - 0
@@ -178,6 +317,10 @@ truths:
     - jet_pflav:
       - -21 
       - 21
+    - jet_genmatch_pt:
+      - {">": 0}
+    - isG:
+      - 1
   label_taup:
     - jet_muflav:
       - 0
@@ -186,7 +329,9 @@ truths:
     - jet_tauflav:
       - 1
     - jet_taucharge:
-      - 1
+      - {">": 0}
+    - jet_genmatch_lep_vis_pt:
+      - {">": 0}
   label_taum:
     - jet_muflav:
       - 0
@@ -195,7 +340,9 @@ truths:
     - jet_tauflav:
       - 1
     - jet_taucharge:
-      - -1
+      - {"<": 0}
+    - jet_genmatch_lep_vis_pt:
+      - {">": 0}
 
 reference_flavour:
   "label_b"
