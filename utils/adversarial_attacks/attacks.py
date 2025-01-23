@@ -277,15 +277,25 @@ class Attacks:
 
         return *[input.detach() for input in adversarial_inputs], truth
 
+    # Work in progress
     def minimizer(self, inputs, truth, model, criterion):
         softmax = torch.nn.Softmax(dim=-1)
-        model_training_state = model.training
-        model.train()  # model has to be in training mode or gradients cannot be computed
         masks = self.create_default_integer_mask(inputs)
         min_loss = self.torch_inf
         batch_size = inputs[0].shape[0]
 
-        nominal_prediction = softmax(model.forward(*inputs))
+        goal_score = (
+            1
+            / self.number_classes
+            * torch.ones(
+                batch_size, self.number_classes, device=self.device, requires_grad=False
+            )
+        )
+
+        scalers = []
+        with torch.no_grad():
+            for input in inputs:
+                scalers.append(torch.max(input, 0)[0])
 
         adversarial_inputs = []
         for input in inputs:
@@ -293,31 +303,30 @@ class Attacks:
                 input.detach().clone().to(self.device).requires_grad_(True)
             )
 
-        optimizer = torch.optim.Adam(params=adversarial_inputs, lr=self.epsilon)
+        minimizer = torch.optim.Adam(params=adversarial_inputs, lr=self.epsilon)
 
         for i in range(self.iterations):
-            loss = -(nominal_prediction - softmax(model.forward(*adversarial_inputs)))**2
+            adversarial_prediction = softmax(model.forward(*adversarial_inputs))
 
-            optimizer.zero_grad(set_to_none=True)
-            loss.backward(
-                gradient=torch.ones(
-                    batch_size, self.number_classes, device=self.device
-                ),
-                retain_graph=True,
-            )
-            optimizer.step()
+            constrains = 0  # has to be \frac{1}{N} * \sum_{i=1}^{N} \frac{x_0^i - x_adv^i}{s * x_0^i}^2
+            objective = (
+                (constrains - (goal_score - adversarial_prediction)) ** 2
+            ).mean()
+
+            minimizer.zero_grad(set_to_none=True)
+            objective.backward(retain_graph=True)
+            minimizer.step()
 
             with torch.no_grad():
                 for index, (mask, input) in enumerate(zip(masks, inputs)):
                     adversarial_inputs[index][mask] = input[mask]
 
-        if loss.mean().item() < min_loss:
-            min_loss = loss.mean().item()
+        if objective.item() < min_loss:
+            min_loss = objective.item()
             best_fit = [
                 adversarial_input.detach().clone()
                 for adversarial_input in adversarial_inputs
             ]
 
         best_fit = self.limit_relative_change(inputs, best_fit)
-        model.train(model_training_state)
         return *best_fit, truth
