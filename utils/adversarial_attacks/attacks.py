@@ -1,3 +1,4 @@
+from tqdm import tqdm
 import numpy as np
 import torch
 
@@ -20,10 +21,12 @@ class Attacks:
         restrict_impact=-1,
         overshoot=0.02,
         epsilon_dir="",
+        store_path="",
         **kwargs,
     ):
         super(Attacks, self).__init__(**kwargs)
         self.device = device
+        self.work_dir = store_path
         self.torch_zero = torch.tensor(0.0, device=self.device, pin_memory=True)
         self.torch_one = torch.tensor(1.0, device=self.device, pin_memory=True)
         self.torch_inf = torch.tensor(float("inf"), device=self.device, pin_memory=True)
@@ -118,7 +121,7 @@ class Attacks:
                 input.detach().clone().to(self.device).requires_grad_(True)
             )
 
-        for i in range(self.iterations):
+        for i in tqdm(range(self.iterations)):
             prediction = model.forward(*adversarial_inputs)
 
             loss = criterion(prediction, truth).mean()
@@ -177,7 +180,11 @@ class Attacks:
 
         k_i = label
 
-        while torch.any(k_i == label).item() and loop < self.iterations:
+        def generator():
+            while torch.any(k_i == label).item() and loop < self.iterations:
+                yield
+
+        for _ in tqdm(generator()):
             perturbations = [self.torch_inf for i in range(len(inputs))]
 
             fs_sorted = torch.gather(fs, 1, I)
@@ -305,7 +312,9 @@ class Attacks:
 
         minimizer = torch.optim.Adam(params=adversarial_inputs, lr=self.epsilon)
 
-        for i in range(self.iterations):
+        objective_score = []
+
+        for i in tqdm(range(self.iterations)):
             adversarial_prediction = softmax(model.forward(*adversarial_inputs))
 
             constrains = 0  # has to be \frac{1}{N} * \sum_{i=1}^{N} \frac{x_0^i - x_adv^i}{s * x_0^i}^2
@@ -314,19 +323,22 @@ class Attacks:
             ).mean()
 
             minimizer.zero_grad(set_to_none=True)
-            objective.backward(retain_graph=True)
+            objective.backward(retain_graph=False)
             minimizer.step()
 
             with torch.no_grad():
                 for index, (mask, input) in enumerate(zip(masks, inputs)):
                     adversarial_inputs[index][mask] = input[mask]
 
-        if objective.item() < min_loss:
-            min_loss = objective.item()
-            best_fit = [
-                adversarial_input.detach().clone()
-                for adversarial_input in adversarial_inputs
-            ]
+            objective_score.append(objective.item())
+
+            if objective_score[-1] < min_loss:
+                min_loss = objective_score[-1]
+                best_fit = [
+                    adversarial_input.detach().clone()
+                    for adversarial_input in adversarial_inputs
+                ]
 
         best_fit = self.limit_relative_change(inputs, best_fit)
+        np.save(f"{self.work_dir}loss_optimizer.npy", np.asarray(objective_score))
         return *best_fit, truth
