@@ -326,7 +326,7 @@ class Attacks:
 
             constraints = 0  # has to be \frac{1}{N} * \sum_{i=1}^{N} \frac{x_0^i - x_adv^i}{s * x_0^i}^2
             objective = (
-                (constraints - (goal_score - adversarial_prediction)) ** 2
+                (constraints - (goal_score - adversarial_prediction) ** 2)
             ).mean()
 
             minimizer.zero_grad(set_to_none=True)
