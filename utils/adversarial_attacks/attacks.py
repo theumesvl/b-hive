@@ -293,11 +293,13 @@ class Attacks:
 
         goal_score = (
             1
-            / self.number_classes
+            / (self.number_classes - 1)
             * torch.ones(
                 batch_size, self.number_classes, device=self.device, requires_grad=False
             )
         )
+        for i in range(batch_size):
+            goal_score[i, truth[i]] = 0
 
         scalers = []
         with torch.no_grad():
@@ -313,9 +315,14 @@ class Attacks:
         minimizer = torch.optim.Adam(params=adversarial_inputs, lr=self.epsilon)
 
         objective_score = []
-
+        predictions = []
         for i in tqdm(range(self.iterations)):
             adversarial_prediction = softmax(model.forward(*adversarial_inputs))
+
+            with torch.no_grad():
+                predictions.append(
+                    adversarial_prediction.detach().clone().cpu().numpy()
+                )
 
             constrains = 0  # has to be \frac{1}{N} * \sum_{i=1}^{N} \frac{x_0^i - x_adv^i}{s * x_0^i}^2
             objective = (
@@ -340,5 +347,9 @@ class Attacks:
                 ]
 
         best_fit = self.limit_relative_change(inputs, best_fit)
+
+        predictions = np.concatenate(predictions)
+
         np.save(f"{self.work_dir}loss_optimizer.npy", np.asarray(objective_score))
+        np.save(f"{self.work_dir}predictions.npy", predictions)
         return *best_fit, truth
