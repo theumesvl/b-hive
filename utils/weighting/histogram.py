@@ -24,6 +24,7 @@ def weight_all_files_histrogram_weighting(
         eta_coordinate = np.digitize(jet_eta, bins_eta) - 1
         weights = histogram_weighting(histograms, reference_key=reference_key)
 
+        """
         print('### Weighting Debug ###')
         print('bins pt: ',bins_pt)
         print('bins eta: ',bins_eta)
@@ -31,6 +32,7 @@ def weight_all_files_histrogram_weighting(
         print('len pt coordinate: ',len(pt_coordinate))
         print('len eta coordinate: ',len(eta_coordinate))
         print('eta coordinate: ',eta_coordinate)
+        """
         
         # values need to be casted to list first!
         # otherwise it will be an object array
@@ -76,6 +78,8 @@ def histogram_weighting(
         weights[weights == np.nan] = 1
 
         weights_list[key] = weights
+    """
     print('+++ Histogram Weighting Debug +++')
     print('weights list: ',weights_list)
+    """
     return weights_list

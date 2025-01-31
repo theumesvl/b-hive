@@ -1,14 +1,11 @@
 import os
-import random
 from typing import Dict
 from collections import defaultdict
 import uuid
-import hist
 import luigi
 import numpy as np
 from coffea import processor
 from coffea.nanoevents import BaseSchema
-from rich.progress import track
 
 from tasks.base import BaseTask
 from tasks.parameter_mixins import DatasetDependency
@@ -16,7 +13,6 @@ from utils.coffea_processors.processor_loader import ProcessorLoader
 from utils.config.config_loader import ConfigLoader
 from utils.dataset.merging import merge_datasets
 from utils.weighting.histogram import (
-    histogram_weighting,
     weight_all_files_histrogram_weighting,
 )
 

@@ -1,8 +1,4 @@
 import law
-import numpy as np
-import torch
-from torch.utils.data import DataLoader
-
 from tasks.base import BaseTask
 from tasks.dataset import DatasetConstructorTask
 from tasks.parameter_mixins import (
@@ -17,6 +13,23 @@ from utils.adversarial_attacks.pick_attack import pick_attack
 from utils.config.config_loader import ConfigLoader
 from utils.models.models import BTaggingModels
 from utils.plotting.termplot import terminal_roc
+
+import law
+
+def import_libraries():
+    from torch.utils.data import DataLoader
+    import torch
+    import numpy as np
+
+    return DataLoader, torch, np 
+
+
+import warnings
+warnings.filterwarnings(
+    "ignore",
+    category=FutureWarning,
+    message="You are using `torch.load` with `weights_only=False`.*",
+)
 
 # to make formatters work
 law.contrib.load("numpy")
@@ -51,6 +64,8 @@ class InferenceTask(
         }
 
     def run(self):
+        DataLoader, torch, np = import_libraries()
+        self.set_device()
         # create directory
         self.output()["prediction"].parent.touch()
         config = ConfigLoader.load_config(self.config)

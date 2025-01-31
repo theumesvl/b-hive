@@ -1,5 +1,7 @@
 import luigi
+from rich.console import Console
 
+from utils.config.config_loader import ConfigLoader
 
 class DatasetDependency(object):
     dataset_version = luigi.Parameter(
@@ -58,6 +60,23 @@ class TrainingDependency(object):
         parts += ("epochs_{0:d}".format(self.epochs),)
 
         return parts
+
+    def set_device(self):
+        c = Console()
+        from utils.models.models import BTaggingModels
+        from torch.nn import Module
+        if issubclass(type(BTaggingModels(self.model_name, ConfigLoader.load_config(self.config))), Module):
+            import torch
+            if torch.cuda.is_available():
+                self.device = "cuda"
+                c.print(
+                    "[black on yellow]Warning:", "CUDA device available. Running on cuda!"
+                )
+        else:
+            self.device = "cpu"
+            c.print(
+                "[black on yellow]Warning:", "No CUDA device available. Running on cpu..."
+            )
 
 
 class AttackDependency(object):
