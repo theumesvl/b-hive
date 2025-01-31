@@ -1,4 +1,3 @@
-from utils.torch.deepJetDataset import DeepJetDataset
 from utils.torch.l1tDataset import L1TDataset
 from utils.torch.LZ4Dataset import LZ4Dataset
 from utils.torch.LZ4FP16Dataset import LZ4FP16Dataset
@@ -6,7 +5,6 @@ from utils.torch.PAIReDDataset import PAIReDDataset
 from utils.torch.LZ4PAIReDDataset import LZ4PAIReDDataset
 
 class DatasetName:
-    DeepJetDataset   = "DeepJetDataset"
     L1TDataset       = "L1TDataset"
     LZ4Dataset       = "LZ4Dataset"
     LZ4FP16Dataset   = "LZ4FP16Dataset"
@@ -16,8 +14,6 @@ class DatasetName:
     
 def DatasetLoader(dataset_name: str = ""):
     match dataset_name:
-        case DatasetName.DeepJetDataset:
-            return DeepJetDataset
         case DatasetName.L1TDataset:
             return L1TDataset
         case DatasetName.LZ4Dataset:

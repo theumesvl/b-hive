@@ -54,14 +54,28 @@ class Classifier_base(nn.Module):
 
     def create_integers_defaults(self):
 
-        # Create integers for each feature group
+        # Create indexes for each integer feature group
         self.integers = [self._create_feature_indices(features, key) for key, features in self.integer_features.items()]
-
         # Defaults for all feature groups
         self.defaults = [torch.tensor([0]) for _ in self.integer_features]
         
+    def model_feature_length(self, attr_name, attr_name_2):
+        """
+        Returns len(getattr(self, attr_name)) if it exists,
+        otherwise calls the provided calculate_feature_length.
+        """
+        if hasattr(self, attr_name):
+            return len(getattr(self, attr_name))
+        return self.calculate_feature_length(attr_name, attr_name_2)
 
-    def _calculate_feature_length(self, base_key, custom_key=None):
+    def all_model_features_length(self):
+        global_dim = self.model_feature_length('global_features', 'global_custom_features')
+        cpf_dim = self.model_feature_length('cpf_candidates', 'cpf_custom_features')
+        npf_dim = self.model_feature_length('npf_candidates', 'npf_custom_features')
+        vtx_dim = self.model_feature_length('vtx_features', 'vtx_custom_features')
+        return global_dim, cpf_dim, npf_dim, vtx_dim
+        
+    def calculate_feature_length(self, base_key, custom_key=None):
         base_length = 0
         if base_key in self.config:
             base_length += len(self.config[base_key])
@@ -69,12 +83,12 @@ class Classifier_base(nn.Module):
             base_length += len(self.config[custom_key])
         return base_length
     
-    def create_feature_lengths(self):
+    def create_feature_shapes(self):
         # Constructions of input shape from config.yaml file
-        len_glob_fts_full = self._calculate_feature_length('global_features', 'global_custom_features')
-        len_cpf_fts_full = self._calculate_feature_length('cpf_candidates', 'cpf_custom_features')
-        len_npf_fts_full = self._calculate_feature_length('npf_candidates', 'npf_custom_features')
-        len_vtx_fts_full = self._calculate_feature_length('vtx_features', 'vtx_custom_features')
+        len_glob_fts_full = self.calculate_feature_length('global_features', 'global_custom_features')
+        len_cpf_fts_full = self.calculate_feature_length('cpf_candidates', 'cpf_custom_features')
+        len_npf_fts_full = self.calculate_feature_length('npf_candidates', 'npf_custom_features')
+        len_vtx_fts_full = self.calculate_feature_length('vtx_features', 'vtx_custom_features')
         
         self.input_dims = [
             (1,                               len_glob_fts_full),
@@ -214,7 +228,7 @@ class Classifier_base(nn.Module):
             BarColumn(bar_width=None),
             TaskProgressColumn(),
             TimeRemainingColumn(),
-            TextColumn("0/? its"),
+            TextColumn(f"0/{dataloader.nits_expected} its"),
             expand=True,
         ) as progress:
             N = 1
@@ -248,12 +262,7 @@ class Classifier_base(nn.Module):
                     task, advance=1, description=f"Inference...   | Loss: {loss:.2f}"
                 )
                 progress.columns[-1].text_format = "{}/{} its".format(
-                    N // dataloader.batch_size,
-                    (
-                        "?"
-                        if dataloader.nits_expected == len(dataloader)
-                        else f"~{dataloader.nits_expected}"
-                    ),
+                    N // dataloader.batch_size, dataloader.nits_expected
                 )
             progress.update(task, completed=dataloader.nits_expected)
        
@@ -269,9 +278,7 @@ class Classifier_base(nn.Module):
         return predictions, truths, kinematics, processes, elapsed_column.elapsed_time
     
     #@torch.compile(mode='max-autotune')
-    def step(self, x, truth, loss_fn, attack=None, device="cpu", mixed_precision=True):
-
-        inpt, truth = self.get_inpt(x, truth=truth, loss_fn=loss_fn, attack=attack, device=device)
+    def step(self, inpt, truth, loss_fn, device="cpu", mixed_precision=True):
         
         if mixed_precision:
             with torch.autocast(device):
@@ -319,10 +326,12 @@ class Classifier_base(nn.Module):
                 truth = truth.type(torch.LongTensor).to(device, non_blocking=True)
                 w = w.float().to(device, non_blocking=True)
 
+                inpt, truth = self.get_inpt(x, truth=truth, loss_fn=loss_fn, attack=attack, device=device)
+                
                 if self.use_torch_compile:
-                    pred, loss = self.compile_step(x, truth, loss_fn, attack=attack, device=device, mixed_precision=self.mixed_precision)
+                    pred, loss = self.compile_step(inpt, truth, loss_fn, device=device, mixed_precision=self.mixed_precision)
                 else:
-                    pred, loss = self.step(x, truth, loss_fn, attack=attack, device=device, mixed_precision=self.mixed_precision)
+                    pred, loss = self.step(inpt, truth, loss_fn, device=device, mixed_precision=self.mixed_precision)
 
                 if torch.isnan(loss).any():
                     raise ValueError("Loss contains NaN values! Something's wrong with calculation, please check.")
@@ -356,15 +365,10 @@ class Classifier_base(nn.Module):
                     task, advance=1, description=f"Training...   | Loss: {loss:.4f}, lr: {curr_lr:.5f}"
                 )
                 progress.columns[-1].text_format = "{}/{} its".format(
-                    N // dataloader.batch_size,
-                    (
-                        "?"
-                        if dataloader.nits_expected == len(dataloader)
-                        else f"~{dataloader.nits_expected}"
-                    ),
+                    N // dataloader.batch_size, f"~{dataloader.nits_expected}"
                 )
             progress.update(task, completed=dataloader.nits_expected)
-        dataloader.nits_expected = N // dataloader.batch_size
+        #dataloader.nits_expected = N // dataloader.batch_size
         accuracy /= N
         print("  ", f"Average loss: {np.array(losses).mean():.4f}")
         print("  ", f"Average accuracy: {float(100*accuracy):.4f}")
@@ -400,10 +404,12 @@ class Classifier_base(nn.Module):
                 w = w.float().to(device, non_blocking=True)
 
                 with torch.no_grad():
+                    inpt, truth = self.get_inpt(x, truth=truth, loss_fn=loss_fn, attack=None, device=device)
+                    
                     if self.use_torch_compile:
-                        pred, loss = self.compile_step(x, truth, loss_fn, attack=None, device=device, mixed_precision=self.mixed_precision)
+                        pred, loss = self.compile_step(inpt, truth, loss_fn, device=device, mixed_precision=self.mixed_precision)
                     else:
-                        pred, loss = self.step(x, truth, loss_fn, attack=None, device=device, mixed_precision=self.mixed_precision)
+                        pred, loss = self.step(inpt, truth, loss_fn, device=device, mixed_precision=self.mixed_precision)
                         
                     losses.append(loss.item())
 
@@ -423,12 +429,7 @@ class Classifier_base(nn.Module):
                     task, advance=1, description=f"Validation... | Loss: {loss:.2f}"
                 )
                 progress.columns[-1].text_format = "{}/{} its".format(
-                    N // dataloader.batch_size,
-                    (
-                        "?"
-                        if dataloader.nits_expected == len(dataloader)
-                        else f"~{dataloader.nits_expected}"
-                    ),
+                    N // dataloader.batch_size, f"~{dataloader.nits_expected}"
                 )
             progress.update(task, completed=dataloader.nits_expected)
         dataloader.nits_expected = N // dataloader.batch_size
@@ -551,7 +552,7 @@ class Classifier_base(nn.Module):
         c_veto = (truth != 3) & (summed_jets != 0)
         bc_veto = (truth != 0) & (truth != 1) & (truth != 2) & (truth != 3) & (summed_jets != 0)
         l_veto = (truth != 4) & (truth != 5) & (summed_jets != 0)
-        no_veto = np.ones(b_veto.shape, dtype=np.bool)
+        no_veto = np.ones(b_veto.shape, dtype=bool)
 
         labels = ["bvsl", "bvsc", "cvsb", "cvsl", "bvsall", "uds_vs_g"]
         discs = [bvsl, bvsc, cvsb, cvsl, bvsall, uds_vs_g]

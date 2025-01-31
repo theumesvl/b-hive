@@ -1225,8 +1225,8 @@ class PAIReDTagger(nn.Module):
             bb_veto = (truth != 0) & (summed_jets != 0)
             cc_veto = (truth != 1) & (summed_jets != 0)
             ll_veto = (truth != 2) & (summed_jets != 0)
-            no_veto1 = np.ones(bb_veto.shape, dtype=np.bool)
-            no_veto2 = np.ones(cc_veto.shape, dtype=np.bool)
+            no_veto1 = np.ones(bb_veto.shape, dtype=bool)
+            no_veto2 = np.ones(cc_veto.shape, dtype=bool)
 
             labels = ["bbvsll", "bbvscc", "ccvsbb", "ccvsll", "bbvsall", "ccvsall"]
             discs = [bbvsll, bbvscc, ccvsbb, ccvsll, bbvsall, ccvsall]

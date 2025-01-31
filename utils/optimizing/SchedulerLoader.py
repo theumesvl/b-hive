@@ -13,7 +13,7 @@ def SchedulerLoader(
     match scheduler_name:
         
         case 'batch_cosine_warmup':
-            nsteps = dataloader.dataset.get_expected_number_of_batches(dataloader.batch_size) * nepochs
+            nsteps = dataloader.nits_expected * nepochs
             scheduler = CosineAnnealingWarmupRestarts(
                 optimizer, 
                 first_cycle_steps=nsteps, 
@@ -35,7 +35,7 @@ def SchedulerLoader(
             batch_lr = False
         
         case "batch_lin_decay":
-            nsteps = dataloader.dataset.get_expected_number_of_batches(dataloader.batch_size) * nepochs
+            nsteps = dataloader.nits_expected * nepochs
             lr_epochs = max(1, int(nsteps * 0.3))
             lr_rate = lr_decay_factor ** (1.0 / lr_epochs)
             mil = list(range(nsteps - lr_epochs, nsteps))

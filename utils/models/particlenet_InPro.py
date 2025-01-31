@@ -1,19 +1,8 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from utils.models.abstract_base_models import Classifier
-from utils.plotting.termplot import terminal_roc
 from scipy.special import softmax
 from utils.models.base_model import Classifier_base
-
-from rich.progress import (
-    BarColumn,
-    Progress,
-    TaskProgressColumn,
-    TextColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-)
 
 """Taken from https://github.com/hqucms/weaver/blob/master/utils/nn/model/ParticleNet.py"""
 """Based on https://github.com/WangYueFt/dgcnn/blob/master/pytorch/model.py."""
@@ -82,6 +71,38 @@ class InputProcess(nn.Module):
         
         return out
 
+class InputProcess_HLT(nn.Module):
+
+    def __init__(self, cpf_dim, vtx_dim, embed_dim, **kwargs):
+        super(InputProcess_HLT, self).__init__(**kwargs)
+        
+        self.cpf_bn0 = torch.nn.BatchNorm1d(cpf_dim, eps = 0.001, momentum = 0.1)
+        self.cpf_conv1 = InputConv(cpf_dim,embed_dim)
+        self.cpf_conv2 = InputConv(embed_dim,embed_dim*4)
+        self.cpf_conv3 = InputConv(embed_dim*4,embed_dim)
+
+        self.vtx_bn0 = torch.nn.BatchNorm1d(vtx_dim, eps = 0.001, momentum = 0.1)
+        self.vtx_conv1 = InputConv(vtx_dim,embed_dim)
+        self.vtx_conv2 = InputConv(embed_dim,embed_dim*4)
+        self.vtx_conv3 = InputConv(embed_dim*4,embed_dim)
+
+    def forward(self, cpf, vtx):
+                
+        cpf = self.cpf_bn0(torch.transpose(cpf, 1, 2))
+        cpf = self.cpf_conv1(cpf, cpf, skip = False)
+        cpf = self.cpf_conv2(cpf, cpf, skip = False)
+        cpf = self.cpf_conv3(cpf, cpf, skip = False)
+
+        vtx = self.vtx_bn0(torch.transpose(vtx, 1, 2))
+        vtx = self.vtx_conv1(vtx, vtx, skip = False)
+        vtx = self.vtx_conv2(vtx, vtx, skip = False)
+        vtx = self.vtx_conv3(vtx, vtx, skip = False)
+
+        out = torch.cat((cpf,vtx), dim = 2)
+        out = torch.transpose(out, 1, 2)
+        
+        return out
+        
 def knn(x, k):
     inner = -2 * torch.matmul(x.transpose(2, 1), x)
     xx = torch.sum(x**2, dim=1, keepdim=True)
@@ -365,16 +386,14 @@ class ParticleNetTagger(Classifier_base):
         for_inference=False,
         **kwargs,
     ):
-        super(ParticleNetTagger, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self.config = config
         self.for_inference = for_inference
 
-        self.len_cpf_fts = len(self.cpf_candidates) if hasattr(self,'cpf_candidates') else self._calculate_feature_length('cpf_candidates', 'cpf_custom_features')
-        self.len_npf_fts = len(self.npf_candidates) if hasattr(self,'npf_candidates') else self._calculate_feature_length('npf_candidates', 'npf_custom_features')
-        self.len_vtx_fts = len(self.vtx_features) if hasattr(self,'vtx_features') else self._calculate_feature_length('vtx_features', 'vtx_custom_features')
+        _, cpf_dim, npf_dim, vtx_dim = self.all_model_features_length()  
         
-        self.InputProcess = InputProcess(self.len_cpf_fts, self.len_npf_fts, self.len_vtx_fts, embed_dim)
+        self.InputProcess = InputProcess(cpf_dim, npf_dim, vtx_dim, embed_dim)
         
         self.pn = ParticleNet(
             input_dims=embed_dim,
@@ -396,3 +415,211 @@ class ParticleNetTagger(Classifier_base):
         pn = self.pn(enc.transpose(1, 2), enc.transpose(1, 2))
         
         return pn
+
+
+class ParticleNetTaggerHLT(Classifier_base):
+    
+    # Define classes used by model and connect it to the config definitions
+    classes = {
+        "b": ["label_b", "label_gbb", "label_bb", "label_leptonicb", "label_leptonicbc"],
+        "c": ["label_c", "label_gcc", "label_cc"],
+        "uds": ["label_ud", "label_s"],
+        "g": ["label_g"],
+        "taup": ["label_taup"],
+        "taum": ["label_taum"],
+    }
+    cpf_candidates = [
+        "jet_pfcand_deta",
+        "jet_pfcand_dphi",
+        "jet_pfcand_pt_log",
+        "jet_pfcand_energy_log",
+        "jet_pfcand_eta",
+        "jet_pfcand_charge",
+        "jet_pfcand_frompv",
+        "jet_pfcand_nlostinnerhits",
+        "jet_pfcand_track_chi2",
+        "jet_pfcand_track_qual",
+        "jet_pfcand_dz",
+        "jet_pfcand_dzsig",
+        "jet_pfcand_dxy",
+        "jet_pfcand_dxysig",
+        "jet_pfcand_etarel",
+        "jet_pfcand_pperp_ratio",
+        "jet_pfcand_ppara_ratio",
+        "jet_pfcand_trackjet_d3d",
+        "jet_pfcand_trackjet_d3dsig",
+        "jet_pfcand_trackjet_dist",
+        "jet_pfcand_trackjet_decayL",
+        "jet_pfcand_npixhits",
+        "jet_pfcand_nstriphits",
+        #"pfcand_mask"
+    ]
+    vtx_features = [
+        "jet_sv_deta",
+        "jet_sv_dphi",
+        "jet_sv_pt_log",
+        "jet_sv_mass",
+        "jet_sv_eta",
+        "jet_sv_ntrack",
+        "jet_sv_chi2",
+        "jet_sv_dxy",
+        "jet_sv_dxysig",
+        "jet_sv_d3d",
+        "jet_sv_d3dsig",
+        #"sv_mask"
+    ]
+    # Features that have integer dtype and should not be changed during adv attacks
+    integer_features = {
+        "global_features": ["jet_elf", "jet_muf", "jet_ncand", "jet_nbhad", "jet_nchad"],
+        "cpf_candidates": ["jet_pfcand_calofraction", "jet_pfcand_hcalfraction", "jet_pfcand_frompv", "jet_pfcand_id",
+                             "jet_pfcand_charge", "jet_pfcand_track_qual", "jet_pfcand_track_chi2", "jet_pfcand_npixhits", 
+                             "jet_pfcand_nstriphits", "jet_pfcand_nlostinnerhits"],
+        "npf_candidates": [],
+        "vtx_features": ["jet_sv_ntrack"],
+    }
+
+    def get_inpt(self, x, truth=None, loss_fn=None, attack=None, device='cpu'):
+
+        glob, cpf, npf, vtx = x.split(self.feature_lengths.tolist(), dim=1)
+        
+        glob = glob.reshape(glob.shape[0], -1)
+        cpf = cpf.reshape(cpf.shape[0], self.input_dims[1][0], -1)
+        npf = npf.reshape(npf.shape[0], self.input_dims[2][0], 0)
+        vtx = vtx.reshape(vtx.shape[0], self.input_dims[3][0], -1)
+
+        # Subselect features
+        glob = self._subselect_features(glob, "global_features")
+        cpf = self._subselect_features(cpf, "cpf_candidates")
+        npf = self._subselect_features(npf, "npf_candidates")
+        vtx = self._subselect_features(vtx, "vtx_features")
+
+        if attack is not None:
+            (
+                glob,
+                cpf,
+                npf,
+                vtx,
+                truth,
+            ) = attack(
+                [
+                    feature.float().to(device)
+                    for feature in [
+                        glob,
+                        cpf,
+                        npf,
+                        vtx,
+                        ]
+                    ],
+                truth.type(torch.LongTensor).to(device),
+                self,
+                loss_fn,
+                device,
+            ) 
+        
+        return (glob.detach(), cpf.detach(), npf.detach(), vtx.detach()), truth
+
+    def __init__(
+        self,
+        config,
+        conv_params=[(50, (128, 128, 128)), (50, (256, 256, 256))],
+        fc_params=[(256, 0.1), (128, 0.1)],
+        embed_dim=128,
+        use_fusion=True,
+        use_fts_bn=True,
+        use_counts=True,
+        for_segmentation = False,
+        for_inference=False,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+
+        self.config = config
+        self.for_inference = for_inference
+
+        _, cpf_dim, _, vtx_dim = self.all_model_features_length()  
+        
+        self.InputProcess = InputProcess_HLT(cpf_dim, vtx_dim, embed_dim)
+        
+        self.pn = ParticleNet(
+            input_dims=embed_dim,
+            num_classes=len(self.classes),
+            conv_params=conv_params,
+            fc_params=fc_params,
+            use_fusion=use_fusion,
+            use_fts_bn=use_fts_bn,
+            use_counts=use_counts,
+            for_inference=for_inference,
+        )
+    
+    def forward(self, inpt):
+
+        global_fts, cpf_fts, _, vtx_fts = inpt[0], inpt[1], inpt[2], inpt[3]
+
+        enc = self.InputProcess(cpf_fts, vtx_fts)
+        
+        pn = self.pn(enc.transpose(1, 2), enc.transpose(1, 2))
+        
+        return pn
+
+    def calculate_roc_list(
+        self,
+        predictions,
+        truth,
+    ):
+        if np.abs(np.mean(np.sum(predictions, axis=-1)) - 1) > 1e-3:
+            predictions = softmax(predictions, axis=-1)
+
+        b_index   = list(self.classes).index('b')
+        c_index   = list(self.classes).index('c')
+        uds_index = list(self.classes).index('uds')
+        g_index   = list(self.classes).index('g')
+        taup_index = list(self.classes).index('taup')
+        taum_index = list(self.classes).index('taum')
+        
+        b_jets   = (truth == b_index)
+        tau_jets = (truth == taup_index) | (truth == taum_index)
+        c_jets   = (truth == c_index)
+        uds_jets = (truth == uds_index)
+        g_jets   = (truth == g_index)
+        l_jets   = uds_jets | g_jets
+        summed_jets = b_jets + c_jets + l_jets + tau_jets
+
+        b_pred = predictions[:, b_index]
+        taup_pred = predictions[:, taup_index]
+        taum_pred = predictions[:, taum_index]
+        c_pred = predictions[:, c_index]
+        uds_pred = predictions[:, uds_index]
+        g_pred = predictions[:, g_index]
+        l_pred = predictions[:, [uds_index, g_index]].sum(axis=1)
+
+        bvsl = np.where((b_pred + l_pred) > 0, (b_pred) / (b_pred + l_pred), -1)
+        bvsc = np.where((b_pred + c_pred) > 0, (b_pred) / (b_pred + c_pred), -1)
+        cvsb = np.where((b_pred + c_pred) > 0, (c_pred) / (b_pred + c_pred), -1)
+        cvsl = np.where((l_pred + c_pred) > 0, (c_pred) / (l_pred + c_pred), -1)
+        bvsall = np.where(
+            (b_pred + l_pred + c_pred + taup_pred + taum_pred) > 0, (b_pred) / (b_pred + l_pred + c_pred + taup_pred + taum_pred), -1
+        )
+        uds_vs_g = np.where((uds_pred + g_pred) > 0, (uds_pred) / (uds_pred + g_pred), -1)
+
+        tau_veto = (truth != taup_index) & (truth != taum_index) & (summed_jets != 0)
+        b_veto = (truth != b_index) & tau_veto & (summed_jets != 0)
+        c_veto = (truth != c_index) & tau_veto & (summed_jets != 0)
+        bc_veto = b_veto & c_veto
+        l_veto = (truth != uds_index) & (truth != g_index) & tau_veto & (summed_jets != 0)
+        no_veto = np.ones(b_veto.shape, dtype=bool)
+
+        labels = ["bvsl", "bvsc", "cvsb", "cvsl", "bvsall", "uds_vs_g"]
+        discs = [bvsl, bvsc, cvsb, cvsl, bvsall, uds_vs_g]
+        vetos = [c_veto, l_veto, l_veto, b_veto, no_veto, bc_veto]
+        truths = [b_jets, b_jets, c_jets, c_jets, b_jets, uds_jets]
+        xlabels = [
+            "b-identification",
+            "b-identification",
+            "c-identification",
+            "c-identification",
+            "b-identification",
+            "uds-identification",
+        ]
+        ylabels = ["light mis-id.", "c mis-id", "b mis-id.", "light mis-id.", "mis-id.", "gluons mis-id."]
+
+        return discs, truths, vetos, labels, xlabels, ylabels

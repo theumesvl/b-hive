@@ -37,9 +37,9 @@ class DatasetConstructorTask(DatasetDependency, BaseTask):
         description="Number of workers for Coffea-processing",
         significant=False,
     )
-
     chunk_size = luigi.IntParameter(
-        default=100000, description="Number of events for outgoing files"
+        default=100000, 
+        description="Number of events for outgoing files"
     )
 
     def output(self):

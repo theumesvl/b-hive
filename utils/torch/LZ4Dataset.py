@@ -12,10 +12,11 @@ class LZ4Dataset(IterableDataset):
         self,
         files,
         model,
+        config_truths,
+        all_number_of_samples,
         data_type="training",
         weighted_sampling=False,
         device="cpu",
-        histogram_training=None,
         max_length=1,
         process_weights=None,
         bins_pt=None,
@@ -33,39 +34,21 @@ class LZ4Dataset(IterableDataset):
         self.data_type = data_type
         if data_type == "validation":
             self.data_type = "test"
-            
-        with lz4.frame.open(self.files[0], mode='r') as fp:
-            output_data = fp.read()
-            s = np.frombuffer(output_data, dtype='float32')
-            s = s[2:].reshape(-1, int(s[1]))
-            self.weights_sum = s[:, -1].sum()
-        
-        if histogram_training is not None:
-            self.all_number_of_samples = histogram_training.sum()   
-        else:
-            self.all_number_of_samples = s.shape[0]*len(self.files)
-
+       
+        self.all_number_of_samples = all_number_of_samples
         self.weighted_sampling = weighted_sampling
-
         self.process_weights = process_weights
-
         self.device = device
         self.model = model
-
+        self.config_truths = config_truths
         self.num_truth = len(model.classes.keys())
-        self.num_ele = 0
-
-        for list_truth in model.classes:
-            self.num_ele += len(model.classes[list_truth])
+        self.num_ele = len(config_truths)
 
     def __len__(self):
         return int(self.all_number_of_samples)
 
     def __getitem__(self, index):
         raise NotImplementedError
-
-    def get_expected_number_of_batches(self, batch_size):
-        return int(self.weights_sum * len(self.files) // batch_size)
 
     def shuffleFileList(self):
         np.random.shuffle(self.files)
@@ -101,11 +84,10 @@ class LZ4Dataset(IterableDataset):
 
             truths = np.zeros(s.shape[0])
             labels = s[:,-(self.num_ele+1):-1]
-            idx = 0
             for index, (name, flavours) in enumerate(self.model.classes.items()):
                 for flav in flavours:
+                    idx = self.config_truths.index(flav)
                     truths[labels[:,idx] == 1] = index
-                    idx += 1
             weights = s[:, -1]
             process = s[:, -(self.num_ele+2)]
             s = s[:,:-(self.num_ele+2)]

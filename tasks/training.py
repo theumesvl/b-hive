@@ -1,6 +1,12 @@
 import law
 import luigi
 import os
+<<<<<<< HEAD
+=======
+import torch
+import lz4.frame
+from torch.utils.data import DataLoader
+>>>>>>> 330c4d8330025519ad47afff6ffe7d7546da63a4
 from pathlib import Path
 
 #debug
@@ -18,7 +24,6 @@ from tasks.parameter_mixins import (
 )
 from utils.config.config_loader import ConfigLoader
 from utils.models.models import BTaggingModels
-from torch.nn import Module
 
 def import_libraries():
     from torch.utils.data import DataLoader
@@ -30,8 +35,9 @@ def import_libraries():
     from utils.optimizing.SchedulerLoader import SchedulerLoader
     from utils.optimizing.OptimizerLoader import OptimizerLoader
     from utils.torch.DatasetLoader import DatasetLoader
+    from torch.nn import Module
     
-    return DataLoader, torch, np, pick_attack, plot_roc_list, plot_losses, plot_accuracy, SchedulerLoader, OptimizerLoader, DatasetLoader
+    return DataLoader, torch, np, pick_attack, plot_roc_list, plot_losses, plot_accuracy, SchedulerLoader, OptimizerLoader, DatasetLoader, Module
 
 
 
@@ -105,7 +111,7 @@ def load_resume_training(model, path, device, output, optimizer=None, scheduler=
 class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, BaseTask):
     loss_weighting = luigi.BoolParameter(
         False,
-        description="Whether to weight the loss or use weighted sampling from the dataset.",
+        description="Whether to weight the loss or use weighted sampling from the dataset (default).",
     )
 
     resume_training = luigi.BoolParameter(
@@ -123,8 +129,11 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         description="Number of epochs to extend a training.",
     )
 
-    train_val_split = 0.8
-
+    train_val_split = luigi.FloatParameter(
+        default=0.85,
+        description="The ratio to divide dataset for train/validation. Default: 0.85"
+    )
+    
     def requires(self):
         return DatasetConstructorTask.req(self)
 
@@ -145,7 +154,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         }
 
     def run(self):
-        DataLoader, torch, np, pick_attack, plot_roc_list, plot_losses, plot_accuracy, SchedulerLoader, OptimizerLoader, DatasetLoader = import_libraries()
+        DataLoader, torch, np, pick_attack, plot_roc_list, plot_losses, plot_accuracy, SchedulerLoader, OptimizerLoader, DatasetLoader, Moodule = import_libraries()
         # with memray.Tracker("/net/scratch_cms3a/uwillemsen/condor/b-hive/output/memory_screening/half_training_interactive_data_04_60GB.bin"): #full_training_data_04_cs50000/full_training_high_ram_01_v1_eps10.bin
         #     print("Allocations will be tracked until the with block ends")
         # enable memory history, which will
@@ -163,6 +172,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         if not os.path.exists(files[-1]):
             files = files[:-1]
 
+        assert (self.train_val_split <= 1) and (self.train_val_split >= 0), "train_val_split should be between 0 and 1!"
         n_train = max(
             (1, int(len(files) * self.train_val_split))
         )  # has at least one training file
@@ -173,7 +183,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             print(
                 "No validation files found. Please check your dataset. Most likely you only have one file!"
             )
-            print("Using the trainingfile for validation")
+            print("Using the training file for validation")
             print()
             validation_files = training_files
         if not (isinstance(training_files, list)):
@@ -208,7 +218,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         if issubclass(type(model := BTaggingModels(self.model_name, config)), torch.nn.Module):
             model = model.to(self.device)
             model.create_integers_defaults()
-            model.create_feature_lengths()
+            model.create_feature_shapes()
             model.mixed_precision = self.mixed_precision
             model.use_torch_compile = self.use_torch_compile
             optimizer = OptimizerLoader(
@@ -255,17 +265,35 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         
         print("Dataset construction")
         datasetClass = DatasetLoader(config["dataset"])
+
+        weights_file = (
+            self.input()["file_list"].path.strip("processed_files.txt") + "weights.lz4"
+        )
+        if config.get("processor", "PFCandidateAndVertexProcessing") == "LZ4FP16Processing":
+            dtype = np.float16
+        else:
+            dtype = np.float32
+            
+        with lz4.frame.open(weights_file, mode='r') as fp:
+            output_data = fp.read()
+            weights = np.frombuffer(output_data, dtype=dtype).astype('float32')
+        chunk_size = int(len(weights) / len(files))
+        expected_train_number_of_batches = int(weights[: n_train * chunk_size].sum() // self.batch_size)
+        expected_val_number_of_batches   = int(weights[n_train * chunk_size:].sum() // self.batch_size)
         
         # Define the training and validation datasets
         training_data = datasetClass(
             training_files,
             model=model,
+            config_truths=list(config['truths']),
+            all_number_of_samples=int(len(weights)*0.8),
             data_type="training",
             weighted_sampling=not (self.loss_weighting),
+            device=self.device,
             bins_pt=config["bins_pt"],
             bins_eta=config["bins_eta"],
             verbose=self.verbose,
-            config=config,
+            config=config
             # process_weights=[
             #     config.get("process-weights", {}).get(proc, 1.0)
             #     for proc in config.get("processes", [])
@@ -277,14 +305,15 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         validation_data = datasetClass(
             validation_files,
             model=model,
+            config_truths=list(config['truths']),
+            all_number_of_samples=len(weights) - int(len(weights)*0.8),
             data_type="validation",
             weighted_sampling=not (self.loss_weighting),
             device=self.device,
-            histogram_training=None,
             bins_pt=config["bins_pt"],
             bins_eta=config["bins_eta"],
             verbose=self.verbose,
-            config=config,
+            config=config
             # process_weights=[
             #     config.get("process-weights", {}).get(proc, 1.0)
             #     for proc in config.get("processes", [])
@@ -302,11 +331,11 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             num_workers=self.n_threads,
         )
 
-        if len(training_dataloader) == 0:
+        if expected_train_number_of_batches == 0:
             raise ValueError("The training DataLoader is empty. Ensure that you have enough data to form at least one batch.")
 
         # Expected number of iterations
-        training_dataloader.nits_expected = len(training_dataloader)
+        training_dataloader.nits_expected = expected_train_number_of_batches
 
         #print(f"Memory usage after initializing training dataloader: {check_memory_usage():.4f} GiB")
 
@@ -318,7 +347,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             num_workers=self.n_threads,
         )
         
-        validation_dataloader.nits_expected = len(validation_dataloader)
+        validation_dataloader.nits_expected = expected_val_number_of_batches
 
         #print(f"Memory usage after initializing validation dataloader: {check_memory_usage():.4f} GiB")
         

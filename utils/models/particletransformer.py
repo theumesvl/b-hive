@@ -1,27 +1,15 @@
+import numpy as np
+import torch
+import torch.nn as nn
 import copy
 import math
 import random
 import warnings
 from functools import partial
 from typing import List
-from utils.models.base_model import Classifier_base
-from utils.plotting.termplot import terminal_roc
-
-from rich.progress import (
-    BarColumn,
-    Progress,
-    TaskProgressColumn,
-    TextColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-)
-
-import numpy as np
-import torch
-import torch.nn as nn
-from torch.optim import Optimizer
-
 from scipy.special import softmax
+
+from utils.models.base_model import Classifier_base
 
 torch.set_float32_matmul_precision('high')
 
@@ -334,6 +322,34 @@ class InputProcess(nn.Module):
         return out
 
 
+class InputProcess_HLT(nn.Module):
+
+    def __init__(self, cpf_dim, vtx_dim, embed_dim, **kwargs):
+        super(InputProcess_HLT, self).__init__(**kwargs)
+        
+        self.cpf_bn0 = torch.nn.BatchNorm1d(cpf_dim, eps = 0.001, momentum = 0.1)
+        self.cpf_conv1 = InputConv(cpf_dim,embed_dim)
+        self.cpf_conv3 = InputConv(embed_dim*1,embed_dim)
+
+        self.vtx_bn0 = torch.nn.BatchNorm1d(vtx_dim, eps = 0.001, momentum = 0.1)
+        self.vtx_conv1 = InputConv(vtx_dim,embed_dim)
+        self.vtx_conv3 = InputConv(embed_dim*1,embed_dim)
+
+    def forward(self, cpf, vtx):
+                
+        cpf = self.cpf_bn0(torch.transpose(cpf, 1, 2))
+        cpf = self.cpf_conv1(cpf, cpf, skip = False)
+        cpf = self.cpf_conv3(cpf, cpf, skip = False)
+
+        vtx = self.vtx_bn0(torch.transpose(vtx, 1, 2))
+        vtx = self.vtx_conv1(vtx, vtx, skip = False)
+        vtx = self.vtx_conv3(vtx, vtx, skip = False)
+
+        out = torch.cat((cpf,vtx), dim = 2)
+        out = torch.transpose(out, 1, 2)
+        
+        return out
+
 class DenseClassifier(nn.Module):
     def __init__(self, **kwargs):
         super(DenseClassifier, self).__init__(**kwargs)
@@ -613,21 +629,18 @@ class ParticleTransformer(Classifier_base):
         build_4v=True,
         **kwargs
     ):
-        super(ParticleTransformer, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self.config = config
-        
         self.for_inference = for_inference
         self.build_4v = build_4v
         self.num_enc_layers = num_enc
 
-        self.len_cpf_fts = len(self.cpf_candidates) if hasattr(self,'cpf_candidates') else self._calculate_feature_length('cpf_candidates', 'cpf_custom_features')
-        self.len_npf_fts = len(self.npf_candidates) if hasattr(self,'npf_candidates') else self._calculate_feature_length('npf_candidates', 'npf_custom_features')
-        self.len_vtx_fts = len(self.vtx_features) if hasattr(self,'vtx_features') else self._calculate_feature_length('vtx_features', 'vtx_custom_features')
+        _, cpf_dim, npf_dim, vtx_dim = self.all_model_features_length()
         
-        cpf_dim = self.len_cpf_fts - 4
-        npf_dim = self.len_npf_fts - 4
-        vtx_dim = self.len_vtx_fts - 4
+        cpf_dim = cpf_dim - 4
+        npf_dim = npf_dim - 4
+        vtx_dim = vtx_dim - 4
 
         self.InputProcess = InputProcess(cpf_dim, npf_dim, vtx_dim, embed_dim)
         self.Linear = nn.Linear(embed_dim, num_classes)
@@ -683,4 +696,283 @@ class ParticleTransformer(Classifier_base):
         if self.for_inference:
             output = torch.softmax(output, dim=1)
 
+        return output
+
+class ParticleTransformerHLT(Classifier_base):
+
+    # Define classes used by model and connect it to the config definitions
+    classes = {
+        "b": ["label_b"],
+        "c": ["label_c"],
+        "uds": ["label_uds"],
+        "g": ["label_g"],
+        "taup": ["label_taup"],
+        "taum": ["label_taum"],
+    }
+    # Features that have integer dtype and should not be changed during adv attacks
+    integer_features = {
+        "global_features": ["jet_elf", "jet_muf", "jet_ncand", "jet_nbhad", "jet_nchad"],
+        "cpf_candidates": ["jet_pfcand_calofraction", "jet_pfcand_hcalfraction", "jet_pfcand_frompv", "jet_pfcand_id",
+                             "jet_pfcand_charge", "jet_pfcand_track_qual", "jet_pfcand_track_chi2", "jet_pfcand_npixhits", 
+                             "jet_pfcand_nstriphits", "jet_pfcand_nlostinnerhits"],
+        "npf_candidates": [],
+        "vtx_features": ["jet_sv_ntrack"],
+    }
+
+    def get_inpt(self, x, truth=None, loss_fn=None, attack=None, device='cpu'):
+
+        glob, cpf, npf, vtx = x.split(self.feature_lengths.tolist(), dim=1)
+        
+        glob = glob.reshape(glob.shape[0], -1)
+        cpf = cpf.reshape(cpf.shape[0], self.input_dims[1][0], -1)
+        npf = npf.reshape(npf.shape[0], self.input_dims[2][0], 0)
+        vtx = vtx.reshape(vtx.shape[0], self.input_dims[3][0], -1)
+
+        if attack is not None:
+            (
+                glob,
+                cpf,
+                npf,
+                vtx,
+                truth,
+            ) = attack(
+                [
+                    feature.float().to(device)
+                    for feature in [
+                        glob,
+                        cpf,
+                        npf,
+                        vtx,
+                        ]
+                    ],
+                truth.type(torch.LongTensor).to(device),
+                self,
+                loss_fn,
+                device,
+            ) 
+        
+        return (glob.detach(), cpf.detach(), npf.detach(), vtx.detach()), truth
+        
+    def __init__(
+        self,
+        config,
+        num_classes=6,
+        num_enc=3,
+        num_head=8,
+        embed_dim=128,
+        for_inference=False,
+        build_4v=True,
+        **kwargs
+    ):
+        super().__init__(**kwargs)
+        
+        self.config = config
+        self.for_inference = for_inference
+        self.build_4v = build_4v
+        self.num_enc_layers = num_enc
+
+        _, cpf_dim, _, vtx_dim = self.all_model_features_length()
+        cpf_dim = cpf_dim - 4
+        vtx_dim = vtx_dim - 4
+        
+        self.InputProcess = InputProcess_HLT(cpf_dim, vtx_dim, embed_dim)
+        self.Linear = nn.Linear(embed_dim, num_classes)
+
+        self.pair_embed = PairEmbed(4, [48, 48] + [num_head], for_onnx=for_inference)
+        self.cls_norm = torch.nn.LayerNorm(embed_dim)
+
+        self.EncoderLayer = HF_TransformerEncoderLayer(
+            d_model=embed_dim, nhead=num_head, dropout=0.1
+        )
+        self.Encoder = HF_TransformerEncoder(self.EncoderLayer, num_layers=num_enc)
+
+        self.CLS_EncoderLayer1 = CLS_TransformerEncoderLayer(
+            d_model=embed_dim, nhead=num_head, dropout=0.1
+        )
+        if self.num_enc_layers > 3:
+            self.CLS_EncoderLayer2 = CLS_TransformerEncoderLayer(
+                d_model=embed_dim, nhead=num_head, dropout=0.1
+            )
+
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim), requires_grad=True)
+        trunc_normal_(self.cls_token, std=0.02)
+    
+    def forward(self, inpt):
+
+        global_features, cpf_features, _, vtx_features = inpt[0], inpt[1], inpt[2], inpt[3]
+        cpf, vtx = cpf_features, vtx_features
+        cpf, vtx = cpf_features[:, :, :-4], vtx_features[:, :, :-4]
+        cpf_4v, vtx_4v = cpf_features[:, :, -4:], vtx_features[:, :, -4:]
+
+        padding_mask = torch.cat((cpf_4v[:, :, :1], vtx_4v[:, :, :1]), dim=1)
+        padding_mask = torch.eq(padding_mask[:, :, 0], 0.0)
+
+        if self.build_4v:
+            cpf_4v = build_E_p(cpf_4v)
+            vtx_4v = build_E_p(vtx_4v)
+
+        enc = self.InputProcess(cpf, vtx) 
+
+        lorentz_vectors = torch.cat((cpf_4v, vtx_4v), dim=1)
+        v = lorentz_vectors.transpose(1, 2)
+        attn_mask = self.pair_embed(v).view(-1, v.size(-1), v.size(-1))
+
+        enc = self.Encoder(enc, attn_mask, padding_mask)
+
+        cls_tokens = self.cls_token.expand(enc.size(0), 1, -1)
+        cls_tokens = self.CLS_EncoderLayer1(cls_tokens, enc, padding_mask)
+        if self.num_enc_layers > 3:
+            cls_tokens = self.CLS_EncoderLayer2(cls_tokens, enc, padding_mask)
+        
+        x = torch.squeeze(cls_tokens, dim=1)
+        output = self.Linear(self.cls_norm(x))
+        if self.for_inference:
+            output = torch.softmax(output, dim=1)
+
+        return output
+
+    def calculate_roc_list(
+        self,
+        predictions,
+        truth,
+    ):
+        if np.abs(np.mean(np.sum(predictions, axis=-1)) - 1) > 1e-3:
+            predictions = softmax(predictions, axis=-1)
+
+        b_index   = list(self.classes).index('b')
+        c_index   = list(self.classes).index('c')
+        uds_index = list(self.classes).index('uds')
+        g_index   = list(self.classes).index('g')
+        taup_index = list(self.classes).index('taup')
+        taum_index = list(self.classes).index('taum')
+        
+        b_jets   = (truth == b_index)
+        tau_jets = (truth == taup_index) | (truth == taum_index)
+        c_jets   = (truth == c_index)
+        uds_jets = (truth == uds_index)
+        g_jets   = (truth == g_index)
+        l_jets   = uds_jets | g_jets
+        summed_jets = b_jets + c_jets + l_jets + tau_jets
+
+        b_pred = predictions[:, b_index]
+        taup_pred = predictions[:, taup_index]
+        taum_pred = predictions[:, taum_index]
+        c_pred = predictions[:, c_index]
+        uds_pred = predictions[:, uds_index]
+        g_pred = predictions[:, g_index]
+        l_pred = predictions[:, [uds_index, g_index]].sum(axis=1)
+
+        bvsl = np.where((b_pred + l_pred) > 0, (b_pred) / (b_pred + l_pred), -1)
+        bvsc = np.where((b_pred + c_pred) > 0, (b_pred) / (b_pred + c_pred), -1)
+        cvsb = np.where((b_pred + c_pred) > 0, (c_pred) / (b_pred + c_pred), -1)
+        cvsl = np.where((l_pred + c_pred) > 0, (c_pred) / (l_pred + c_pred), -1)
+        bvsall = np.where(
+            (b_pred + l_pred + c_pred + taup_pred + taum_pred) > 0, (b_pred) / (b_pred + l_pred + c_pred + taup_pred + taum_pred), -1
+        )
+        uds_vs_g = np.where((uds_pred + g_pred) > 0, (uds_pred) / (uds_pred + g_pred), -1)
+
+        tau_veto = (truth != taup_index) & (truth != taum_index) & (summed_jets != 0)
+        b_veto = (truth != b_index) & tau_veto & (summed_jets != 0)
+        c_veto = (truth != c_index) & tau_veto & (summed_jets != 0)
+        bc_veto = b_veto & c_veto
+        l_veto = (truth != uds_index) & (truth != g_index) & tau_veto & (summed_jets != 0)
+        no_veto = np.ones(b_veto.shape, dtype=bool)
+
+        labels = ["bvsl", "bvsc", "cvsb", "cvsl", "bvsall", "uds_vs_g"]
+        discs = [bvsl, bvsc, cvsb, cvsl, bvsall, uds_vs_g]
+        vetos = [c_veto, l_veto, l_veto, b_veto, no_veto, bc_veto]
+        truths = [b_jets, b_jets, c_jets, c_jets, b_jets, uds_jets]
+        xlabels = [
+            "b-identification",
+            "b-identification",
+            "c-identification",
+            "c-identification",
+            "b-identification",
+            "uds-identification",
+        ]
+        ylabels = ["light mis-id.", "c mis-id", "b mis-id.", "light mis-id.", "mis-id.", "gluons mis-id."]
+
+        return discs, truths, vetos, labels, xlabels, ylabels
+
+
+class GlobalParticleTransformerHLT(ParticleTransformerHLT):
+
+    def __init__(
+        self,
+        config,
+        num_classes=6,
+        num_enc=3,
+        num_head=8,
+        embed_dim=128,
+        for_inference=False,
+        build_4v=True,
+        **kwargs
+    ):
+        super().__init__(config, **kwargs)
+
+        self.config = config
+        self.for_inference = for_inference
+        self.build_4v = build_4v
+        self.num_enc_layers = num_enc
+
+        global_dim, cpf_dim, _, vtx_dim = self.all_model_features_length()
+        cpf_dim = cpf_dim - 4
+        vtx_dim = vtx_dim - 4
+
+        self.global_bn = torch.nn.BatchNorm1d(global_dim, eps=0.001, momentum=0.6)
+        self.InputProcess = InputProcess_HLT(cpf_dim, vtx_dim, embed_dim)
+        self.Linear = nn.Linear(embed_dim + global_dim, num_classes)
+
+        self.pair_embed = PairEmbed(4, [48, 48] + [num_head], for_onnx=for_inference)
+        self.cls_norm = torch.nn.LayerNorm(embed_dim + global_dim)
+
+        self.EncoderLayer = HF_TransformerEncoderLayer(
+            d_model=embed_dim, nhead=num_head, dropout=0.1
+        )
+        self.Encoder = HF_TransformerEncoder(self.EncoderLayer, num_layers=num_enc)
+
+        self.CLS_EncoderLayer1 = CLS_TransformerEncoderLayer(
+            d_model=embed_dim, nhead=num_head, dropout=0.1
+        )
+        if self.num_enc_layers > 3:
+            self.CLS_EncoderLayer2 = CLS_TransformerEncoderLayer(
+                d_model=embed_dim, nhead=num_head, dropout=0.1
+            )
+
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim), requires_grad=True)
+        trunc_normal_(self.cls_token, std=0.02)
+    
+    def forward(self, inpt):
+
+        global_features, cpf_features, _, vtx_features = inpt[0], inpt[1], inpt[2], inpt[3]
+        cpf, vtx = cpf_features, vtx_features
+        cpf, vtx = cpf_features[:, :, :-4], vtx_features[:, :, :-4]
+        cpf_4v, vtx_4v = cpf_features[:, :, -4:], vtx_features[:, :, -4:]
+
+        global_features = self.global_bn(global_features)
+
+        padding_mask = torch.cat((cpf_4v[:, :, :1], vtx_4v[:, :, :1]), dim=1)
+        padding_mask = torch.eq(padding_mask[:, :, 0], 0.0)
+
+        if self.build_4v:
+            cpf_4v = build_E_p(cpf_4v)
+            vtx_4v = build_E_p(vtx_4v)
+
+        enc = self.InputProcess(cpf, vtx)
+
+        lorentz_vectors = torch.cat((cpf_4v, vtx_4v), dim=1)
+        v = lorentz_vectors.transpose(1, 2)
+        attn_mask = self.pair_embed(v).view(-1, v.size(-1), v.size(-1))
+
+        enc = self.Encoder(enc, attn_mask, padding_mask)
+
+        cls_tokens = self.cls_token.expand(enc.size(0), 1, -1)
+        cls_tokens = self.CLS_EncoderLayer1(cls_tokens, enc, padding_mask)
+        if self.num_enc_layers > 3:
+            cls_tokens = self.CLS_EncoderLayer2(cls_tokens, enc, padding_mask)
+        
+        x = torch.cat((global_features, torch.squeeze(cls_tokens, dim=1)), dim=1)
+        output = self.Linear(self.cls_norm(x))
+        if self.for_inference:
+            output = torch.softmax(output, dim=1)
         return output

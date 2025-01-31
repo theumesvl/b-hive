@@ -81,6 +81,41 @@ class InputProcess(nn.Module):
         return cpf, npf, vtx
 
 
+class InputProcess_HLT(nn.Module):
+    def __init__(self, 
+                 cpf_conv,
+                 vtx_conv, 
+                 **kwargs
+        ):
+        
+        super(InputProcess_HLT, self).__init__(**kwargs)
+        
+        cpf_conv_full = cpf_conv.copy()
+        vtx_conv_full = vtx_conv.copy()
+
+        self.cpf_bn = torch.nn.BatchNorm1d(cpf_conv_full[0], eps=0.001, momentum=0.6)
+        self.cpf_conv = nn.ModuleList([InputConv(cpf_conv_full[i], cpf_conv_full[i+1]) for i in range(len(cpf_conv_full) - 2)])
+        self.cpf_conv.append(InputConv(cpf_conv_full[-2], cpf_conv_full[-1], norm=False))
+
+        self.vtx_bn = torch.nn.BatchNorm1d(vtx_conv_full[0], eps=0.001, momentum=0.6)
+        self.vtx_conv = nn.ModuleList([InputConv(vtx_conv_full[i], vtx_conv_full[i+1]) for i in range(len(vtx_conv_full) - 2)])
+        self.vtx_conv.append(InputConv(vtx_conv_full[-2], vtx_conv_full[-1], norm=False))
+
+    def forward(self, cpf, vtx):
+        
+        cpf = self.cpf_bn(torch.transpose(cpf, 1, 2))
+        for conv in self.cpf_conv:
+            cpf = conv(cpf)
+        cpf = torch.transpose(cpf, 1, 2)
+
+        vtx = self.vtx_bn(torch.transpose(vtx, 1, 2))
+        for conv in self.vtx_conv:
+            vtx = conv(vtx)
+        vtx = torch.transpose(vtx, 1, 2)
+
+        return cpf, vtx
+        
+
 class DenseClassifier(nn.Module):
     def __init__(self, dense_clas_dim_full, **kwargs):
         super(DenseClassifier, self).__init__(**kwargs)
