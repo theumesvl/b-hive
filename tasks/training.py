@@ -1,11 +1,7 @@
 import law
 import luigi
-import numpy as np
 import os
-import torch
-from torch.utils.data import DataLoader
 from pathlib import Path
-from IPython import embed
 
 #debug
 import psutil
@@ -20,13 +16,22 @@ from tasks.parameter_mixins import (
     DatasetDependency,
     TrainingDependency,
 )
-from utils.adversarial_attacks.pick_attack import pick_attack
 from utils.config.config_loader import ConfigLoader
 from utils.models.models import BTaggingModels
-from utils.plotting.roc import plot_roc_list, plot_losses, plot_accuracy
-from utils.optimizing.SchedulerLoader import SchedulerLoader
-from utils.optimizing.OptimizerLoader import OptimizerLoader
-from utils.torch.DatasetLoader import DatasetLoader
+from torch.nn import Module
+
+def import_libraries():
+    from torch.utils.data import DataLoader
+    import torch
+    import numpy as np
+
+    from utils.adversarial_attacks.pick_attack import pick_attack
+    from utils.plotting.roc import plot_roc_list, plot_losses, plot_accuracy
+    from utils.optimizing.SchedulerLoader import SchedulerLoader
+    from utils.optimizing.OptimizerLoader import OptimizerLoader
+    from utils.torch.DatasetLoader import DatasetLoader
+    
+    return DataLoader, torch, np, pick_attack, plot_roc_list, plot_losses, plot_accuracy, SchedulerLoader, OptimizerLoader, DatasetLoader
 
 
 
@@ -129,17 +134,18 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             "validation_metrics": self.local_target("validation_metrics.npz"),
             "model": (
                 self.local_target(f"model_{self.epochs-1 + self.extend_training}.pt")
-                if issubclass(type(BTaggingModels(self.model_name, ConfigLoader.load_config(self.config))), torch.nn.Module)
+                if issubclass(type(BTaggingModels(self.model_name, ConfigLoader.load_config(self.config))), Module)
                 else self.local_target(f"model_{self.epochs-1}.keras")
             ),
             "best_model": (
                 self.local_target("best_model.pt")
-                if issubclass(type(BTaggingModels(self.model_name, ConfigLoader.load_config(self.config))), torch.nn.Module)
+                if issubclass(type(BTaggingModels(self.model_name, ConfigLoader.load_config(self.config))), Module)
                 else self.local_target(f"best_model.keras")
             ),
         }
 
     def run(self):
+        DataLoader, torch, np, pick_attack, plot_roc_list, plot_losses, plot_accuracy, SchedulerLoader, OptimizerLoader, DatasetLoader = import_libraries()
         # with memray.Tracker("/net/scratch_cms3a/uwillemsen/condor/b-hive/output/memory_screening/half_training_interactive_data_04_60GB.bin"): #full_training_data_04_cs50000/full_training_high_ram_01_v1_eps10.bin
         #     print("Allocations will be tracked until the with block ends")
         # enable memory history, which will

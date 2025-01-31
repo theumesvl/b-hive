@@ -9,7 +9,6 @@ from tasks.parameter_mixins import (
     TrainingDependency,
 )
 
-from torch.utils.data import DataLoader
 from utils.adversarial_attacks.pick_attack import pick_attack
 from utils.config.config_loader import ConfigLoader
 from utils.models.models import BTaggingModels
@@ -17,9 +16,13 @@ from utils.plotting.termplot import terminal_roc
 from utils.torch.DatasetLoader import DatasetLoader
 
 import law
-import numpy as np
-import torch
-from torch.utils.data import DataLoader
+
+def import_libraries():
+    from torch.utils.data import DataLoader
+    import torch
+    import numpy as np
+
+    return DataLoader, torch, np 
 
 
 import warnings
@@ -63,6 +66,7 @@ class InferenceTask(
         }
 
     def run(self):
+        DataLoader, torch, np = import_libraries()
         # create directory
         self.output()["prediction"].parent.touch()
         config = ConfigLoader.load_config(self.config)

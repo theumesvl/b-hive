@@ -1,4 +1,3 @@
-from utils.config.config_loader import ConfigLoader
 from rich.console import Console
 import luigi
 import torch
