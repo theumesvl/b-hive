@@ -35,7 +35,7 @@ class CrossEntropyLogCosh(torch.nn.L1Loss):
             loss_cat = torch.nn.functional.cross_entropy(input_cat, y_cat, reduction = self.reduction)
 
         x_reg         = input_reg - y_reg
-        x_reg_wnu     = input_reg_wnu - y_reg_wnu
+        x_reg_wnu     = input_reg_wnu.reshape(-1,1) - y_reg_wnu.reshape(-1,1)
         loss_mean     = 0
         loss_mean2    = 0
         loss_quant    = 0
