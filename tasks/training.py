@@ -1,19 +1,15 @@
 import law
 import luigi
 import os
-<<<<<<< HEAD
-=======
+
 import torch
 import lz4.frame
 from torch.utils.data import DataLoader
->>>>>>> 330c4d8330025519ad47afff6ffe7d7546da63a4
 from pathlib import Path
 
 #debug
 import psutil
-#import memray
 import time
-#import gc
 
 from tasks.base import BaseTask
 from tasks.dataset import DatasetConstructorTask

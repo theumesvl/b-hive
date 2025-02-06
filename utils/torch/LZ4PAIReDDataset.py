@@ -45,7 +45,7 @@ class LZ4PAIReDDataset(IterableDataset):
                 self.all_number_of_samples = s[0] * len(self.files)
                 
         self.weighted_sampling = weighted_sampling
-	self.batch_size = batch_size
+        self.batch_size = batch_size
         self.num_ele = 0
 
         for list_truth in model.classes:
