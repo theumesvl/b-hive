@@ -262,7 +262,7 @@ class Classifier_base(nn.Module):
                     task, advance=1, description=f"Inference...   | Loss: {loss:.2f}"
                 )
                 progress.columns[-1].text_format = "{}/{} its".format(
-                    N // dataloader.batch_size, dataloader.nits_expected
+                    N // dataloader.dataset.batch_size, dataloader.nits_expected
                 )
             progress.update(task, completed=dataloader.nits_expected)
        
@@ -302,7 +302,7 @@ class Classifier_base(nn.Module):
         device="cpu",
         verbose=True,
     ):
-        losses = []
+        losses = 0.0
         accuracy = 0.0
         self.train()
 
@@ -320,7 +320,7 @@ class Classifier_base(nn.Module):
             N = 0
             task = progress.add_task("Training...", total=dataloader.nits_expected)
             print("entering traing loop")
-            for (x, truth, w, p) in dataloader:
+            for b, (x, truth, w, p) in enumerate(dataloader):
 
                 x = x.float().to(device, non_blocking=True)
                 truth = truth.type(torch.LongTensor).to(device, non_blocking=True)
@@ -333,12 +333,9 @@ class Classifier_base(nn.Module):
                 else:
                     pred, loss = self.step(inpt, truth, loss_fn, device=device, mixed_precision=self.mixed_precision)
 
-                if torch.isnan(loss).any():
-                    raise ValueError("Loss contains NaN values! Something's wrong with calculation, please check.")
-        
                 optimizer.zero_grad(set_to_none=True)
                 
-                if scaler is not None:
+                if self.mixed_precision:
                     # Mixed-precision training
                     scaler.scale(loss).backward()
                     scaler.unscale_(optimizer)
@@ -354,7 +351,7 @@ class Classifier_base(nn.Module):
                 if batch_lr and (scheduler is not None):
                     scheduler.step()
       
-                losses.append(loss.item())
+                losses += loss.item()
                 accuracy += (
                     (pred.argmax(1) == truth.to(device)).type(torch.float).sum().item()
                 )
@@ -365,18 +362,18 @@ class Classifier_base(nn.Module):
                     task, advance=1, description=f"Training...   | Loss: {loss:.4f}, lr: {curr_lr:.5f}"
                 )
                 progress.columns[-1].text_format = "{}/{} its".format(
-                    N // dataloader.batch_size, f"~{dataloader.nits_expected}"
+                    N // dataloader.dataset.batch_size, f"~{dataloader.nits_expected}"
                 )
             progress.update(task, completed=dataloader.nits_expected)
         #dataloader.nits_expected = N // dataloader.batch_size
         accuracy /= N
-        print("  ", f"Average loss: {np.array(losses).mean():.4f}")
+        print("  ", f"Average loss: {losses/(b+1):.4f}")
         print("  ", f"Average accuracy: {float(100*accuracy):.4f}")
 
-        return np.array(losses).mean(), float(accuracy), elapsed_column.elapsed_time
+        return losses/(b+1), float(accuracy), elapsed_column.elapsed_time
 
     def validate_model(self, dataloader, loss_fn, device="cpu", verbose=True, terminal_plot=False):
-        losses = []
+        losses = 0.0
         accuracy = 0.0
         self.eval()
 
@@ -397,7 +394,7 @@ class Classifier_base(nn.Module):
         ) as progress:
             N = 1
             task = progress.add_task("Validation...", total=dataloader.nits_expected)
-            for (x, truth, w, process) in dataloader:
+            for b, (x, truth, w, process) in enumerate(dataloader):
                 
                 x = x.float().to(device, non_blocking=True)
                 truth = truth.type(torch.LongTensor).to(device, non_blocking=True)
@@ -411,7 +408,7 @@ class Classifier_base(nn.Module):
                     else:
                         pred, loss = self.step(inpt, truth, loss_fn, device=device, mixed_precision=self.mixed_precision)
                         
-                    losses.append(loss.item())
+                    losses += loss.item()
 
                     accuracy += (
                         (pred.argmax(1) == truth.to(device))
@@ -429,19 +426,19 @@ class Classifier_base(nn.Module):
                     task, advance=1, description=f"Validation... | Loss: {loss:.2f}"
                 )
                 progress.columns[-1].text_format = "{}/{} its".format(
-                    N // dataloader.batch_size, f"~{dataloader.nits_expected}"
+                    N // dataloader.dataset.batch_size, f"~{dataloader.nits_expected}"
                 )
             progress.update(task, completed=dataloader.nits_expected)
-        dataloader.nits_expected = N // dataloader.batch_size
+        dataloader.nits_expected = N // dataloader.dataset.batch_size
         accuracy /= N
-        print("  ", f"Validation loss: {np.array(losses).mean():.4f}")
+        print("  ", f"Validation loss: {losses/(b+1):.4f}")
         print("  ", f"Validation accuracy: {float(100*accuracy):.4f}")
 
         if verbose and terminal_plot:
             print("Printing terminal ROC")
             terminal_roc(predictions, truths, title="Validation ROC")
 
-        return np.array(losses).mean(), float(accuracy), elapsed_column.elapsed_time
+        return losses/(b+1), float(accuracy), elapsed_column.elapsed_time
 
 
     def _subselect_features(self, tensor, name_fts):

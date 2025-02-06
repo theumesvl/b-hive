@@ -2,6 +2,8 @@ import os
 from collections import defaultdict
 from math import inf
 import lz4.frame
+from concurrent.futures import ThreadPoolExecutor
+import threading
 
 import numpy as np
 import numpy.lib.recfunctions as rfn
@@ -56,7 +58,8 @@ def merge_datasets(
     path, 
     label="", 
     chunk_size=100000, 
-    verbose=0, 
+    verbose=0,
+    workers=8,
     processor = "", 
     shuffle=True, 
     debug=False, 
@@ -109,56 +112,78 @@ def merge_datasets(
             weights_list = np.array(weights_list)
 
             any_file_created = False
-            for i, file in enumerate(files):
+            chunk_lock = threading.Lock()
+            i = 0
+            
+            def process_file(file):
+                nonlocal chunk, n_chunk, any_file_created, weights_list, file_list, i
+
                 data = np.load(file[:-4]+'.npy', allow_pickle=True).astype(dtype)
                 os.remove(file[:-4]+'.npy')
                 n_samples = len(data)
 
-                if n_chunk + n_samples > chunk_size:
-                    index_range = chunk_size - n_chunk
-                else:
-                    index_range = n_samples
+                # First locked section: calculate indices and update chunk
+                with chunk_lock:
+                    i += 1
+                    if n_chunk + n_samples > chunk_size:
+                        index_range = chunk_size - n_chunk
+                    else:
+                        index_range = n_samples
 
-                chunk[n_chunk : n_chunk + index_range] = data[:index_range]
-                n_chunk += index_range
-                
-                if n_chunk >= chunk_size:
-                    filename = os.path.join(path, f"{label}_{len(file_list)}.lz4")
-                    file_list.append(filename)
+                    chunk[n_chunk : n_chunk + index_range] = data[:index_range]
+                    n_chunk += index_range
+        
+                    should_process = n_chunk >= chunk_size
+                    if should_process:
+                        # Make a copy of the chunk to process outside the lock
+                        chunk_to_process = chunk.copy()
+                        
+                        # Reset chunk for next iteration
+                        chunk = np.zeros((chunk_size, dim), dtype=dtype)
+                        chunk[: n_samples - index_range] = data[index_range:]
+                        n_chunk = n_samples - index_range
+                        
+                if should_process:
+                    # Lock only when updating shared resources
+                    with chunk_lock:
+                        filename = os.path.join(path, f"{label}_{len(file_list)}.lz4")
+                        file_list.append(filename)
+            
+                    s1 = ~np.isnan(chunk_to_process).any(axis = 1)
+                    s2 = ~np.isinf(chunk_to_process).any(axis = 1)
+                    chunk_to_process = chunk_to_process[s1*s2]
 
-                    s1 = ~np.isnan(chunk).any(axis = 1)
-                    s2 = ~np.isinf(chunk).any(axis = 1)
-                    chunk = chunk[s1*s2]
-
-                    pt_coordinate  = np.digitize(chunk[:, pt_key_index],  bins_pt)  - 1
-                    eta_coordinate = np.digitize(chunk[:, eta_key_index], bins_eta) - 1
-                    
-                    flavour_idx = np.argmax(chunk[:,-histograms.shape[0]:], axis=-1)
+                    pt_coordinate  = np.digitize(chunk_to_process[:, pt_key_index],  bins_pt)  - 1
+                    eta_coordinate = np.digitize(chunk_to_process[:, eta_key_index], bins_eta) - 1
+        
+                    flavour_idx = np.argmax(chunk_to_process[:,-histograms.shape[0]:], axis=-1)
 
                     w = weights_list[flavour_idx, pt_coordinate, eta_coordinate].astype(dtype)
-                    chunk = np.concatenate((chunk,w.reshape(-1,1)), axis=1)
-                    size = np.array(chunk.shape).astype(dtype)
-                    
-                    arr = np.concatenate((size, chunk.astype(dtype).flatten()))
+                    chunk_to_process = np.concatenate((chunk_to_process,w.reshape(-1,1)), axis=1)
+                    size = np.array(chunk_to_process.shape).astype(dtype)
+        
+                    arr = np.concatenate((size, chunk_to_process.astype(dtype).flatten()))
                     arr = arr.tobytes()
+
                     print(filename)
                     with lz4.frame.open(filename, mode='wb') as fp:
                         bytes_written = fp.write(arr)
                         if not any_file_created:
                             any_file_created = True
-                            
+                
                     w = w.tobytes()
                     mode = 'ab' if os.path.exists(weight_filename) else 'wb'
-                    with lz4.frame.open(weight_filename, mode=mode) as fp:
+                    with lz4.frame.open(weight_filename, mode=mode, block_size=lz4.frame.BLOCKSIZE_MAX4MB) as fp:
                         bytes_written = fp.write(w)
-
-                    chunk = np.zeros((chunk_size, dim), dtype=dtype)
-                    chunk[: n_samples - index_range] = data[index_range:]
-                    n_chunk = n_samples - index_range   
 
                 progress.update(task, advance=1, description=f"Merging...")
                 progress.columns[-1].text_format = "{}/{} its".format(i+1, len(files))
-            progress.update(task, completed=len(files))
+
+            # Parallel file processing
+            with ThreadPoolExecutor(max_workers=workers) as executor:  # Adjust workers as needed
+                list(executor.map(process_file, files))
+                progress.update(task, completed=len(files))
+                
             if not any_file_created:
                 raise ValueError("Expected at least one file to be created, but none were. This is probably to the small amount of data and/or large chunk size.")
         else:

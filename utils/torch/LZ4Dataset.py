@@ -22,6 +22,7 @@ class LZ4Dataset(IterableDataset):
         bins_pt=None,
         bins_eta=None,
         verbose=0,
+        batch_size = 512,
         **kwargs
     ):
         self.verbose = verbose
@@ -35,6 +36,7 @@ class LZ4Dataset(IterableDataset):
         if data_type == "validation":
             self.data_type = "test"
        
+        self.batch_size = batch_size
         self.all_number_of_samples = all_number_of_samples
         self.weighted_sampling = weighted_sampling
         self.process_weights = process_weights
@@ -60,6 +62,7 @@ class LZ4Dataset(IterableDataset):
         if worker_info is not None:
             files_to_read = np.array_split(files_to_read, worker_info.num_workers)[worker_info.id]
 
+        leftover_data = None
         for file in files_to_read:
             if self.verbose:
                 print(f"Loading {file}")
@@ -68,16 +71,11 @@ class LZ4Dataset(IterableDataset):
             with lz4.frame.open(file, mode='r') as data:
                 output_data = data.read()
             s = np.frombuffer(output_data, dtype='float32')
-            s = s[2:].reshape(-1, int(s[1]))
-
-            s1 = ~np.isnan(s).any(axis = 1)
-            s2 = ~np.isinf(s).any(axis = 1)
-            s = s[s1*s2]
+            s = s[2:].reshape(-1, int(s[1]), order="C")
 
             if self.weighted_sampling:
                 random_number = np.random.rand(s.shape[0])
-                mask = random_number < s[:, -1]
-                s = s[mask]
+                s = s[random_number < s[:, -1]]
 
             if self.verbose:
                 print(f"Keeping {np.sum(mask)}/{len(mask)} events")
@@ -92,8 +90,32 @@ class LZ4Dataset(IterableDataset):
             process = s[:, -(self.num_ele+2)]
             s = s[:,:-(self.num_ele+2)]
 
-            for (si, yi, wi, pi) in zip(s, truths, weights, process):
-                yield np.expand_dims(si, axis=-1), yi, wi, pi
+            if leftover_data is not None:
+                s = np.concatenate((leftover_data[0], s))
+                truths = np.concatenate((leftover_data[1], truths))
+                weights = np.concatenate((leftover_data[2], weights))
+                process = np.concatenate((leftover_data[3], process))
+                leftover_data = None
+
+            num_samples = s.shape[0]
+
+            for batch_start in range(0, num_samples, self.batch_size):
+                batch_end = min(batch_start + self.batch_size, num_samples)
+                if(batch_end - batch_start) == self.batch_size:
+                    yield (
+                        s[batch_start:batch_end],
+                        truths[batch_start:batch_end],
+                        weights[batch_start:batch_end],
+                        process[batch_start:batch_end],
+                    )
+                else:
+                    leftover_data = [
+                        s[batch_start:batch_end],
+                        truths[batch_start:batch_end],
+                        weights[batch_start:batch_end],
+                        process[batch_start:batch_end],
+                    ]
+                
         return None
 
     def get_all_weights(self):

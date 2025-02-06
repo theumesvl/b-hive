@@ -137,6 +137,7 @@ class DatasetConstructorTask(DatasetDependency, BaseTask):
             label="file",
             processor=config.get("processor", "PFCandidateAndVertexProcessing"),
             chunk_size=self.chunk_size,
+            workers=self.coffea_worker,
             shuffle=True,
             histograms=np.array(histograms, dtype=np.float32),
             reference_key=list(config["truths"]).index(config["reference_flavour"]), #reference_key is the histogram index for LZ4 dataset

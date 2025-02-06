@@ -24,6 +24,7 @@ class LZ4PAIReDDataset(IterableDataset):
         bins_eta=None,
         verbose=0,
         config=None,
+        batch_size=512,
     ):
         self.verbose = verbose
         self.files = files

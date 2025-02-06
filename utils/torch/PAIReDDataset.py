@@ -21,6 +21,7 @@ class PAIReDDataset(IterableDataset):
         bins_pt=None,
         bins_eta=None,
         verbose=0,
+        batch_size=512,
         **kwargs
     ):
         self.verbose = verbose

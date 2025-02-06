@@ -20,6 +20,7 @@ class L1TDataset(IterableDataset):
         bins_pt=None,
         bins_eta=None,
         verbose=1,
+        batch_size=512,
         **kwargs,
     ):
         self.verbose = verbose

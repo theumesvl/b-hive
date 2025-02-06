@@ -273,8 +273,8 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             dtype = np.float16
         else:
             dtype = np.float32
-            
-        with lz4.frame.open(weights_file, mode='r') as fp:
+
+        with lz4.frame.open(weights_file, mode='r', block_size=lz4.frame.BLOCKSIZE_MAX4MB) as fp:
             output_data = fp.read()
             weights = np.frombuffer(output_data, dtype=dtype).astype('float32')
         chunk_size = int(len(weights) / len(files))
@@ -293,11 +293,8 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             bins_pt=config["bins_pt"],
             bins_eta=config["bins_eta"],
             verbose=self.verbose,
-            config=config
-            # process_weights=[
-            #     config.get("process-weights", {}).get(proc, 1.0)
-            #     for proc in config.get("processes", [])
-            # ],
+            config=config,
+            batch_size=self.batch_size,
         )
 
         #print(f"Memory usage after training dataset loading: {check_memory_usage():.4f} GiB")
@@ -313,11 +310,8 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             bins_pt=config["bins_pt"],
             bins_eta=config["bins_eta"],
             verbose=self.verbose,
-            config=config
-            # process_weights=[
-            #     config.get("process-weights", {}).get(proc, 1.0)
-            #     for proc in config.get("processes", [])
-            # ],
+            config=config,
+            batch_size=self.batch_size,
         )
 
         #print(f"Memory usage after validation dataset loading: {check_memory_usage():.4f} GiB")
@@ -325,8 +319,9 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         # Define the corresponding dataloaders
         training_dataloader = DataLoader(
             training_data,
-            batch_size=self.batch_size,
-            drop_last=True,
+#            batch_size=self.batch_size if (config["dataset"] != "LZ4FP16Dataset") else None,
+            batch_size=self.batch_size if ((config["dataset"] != "LZ4FP16Dataset") and (config["dataset"] != "LZ4Dataset")) else None,
+            drop_last=False,
             pin_memory=True,  # Pin Memory for faster CPU/GPU memory load
             num_workers=self.n_threads,
         )
@@ -341,7 +336,8 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
 
         validation_dataloader = DataLoader(
             validation_data,
-            batch_size=self.batch_size,
+#            batch_size=self.batch_size if (config["dataset"] != "LZ4FP16Dataset") else None,
+            batch_size=self.batch_size if ((config["dataset"] != "LZ4FP16Dataset") and (config["dataset"] != "LZ4Dataset")) else None,
             drop_last=False,
             pin_memory=True,
             num_workers=self.n_threads,
