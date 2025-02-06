@@ -43,6 +43,7 @@ class PAIReDDataset(IterableDataset):
             else:
                 self.all_number_of_samples = 0
         self.weighted_sampling = weighted_sampling
+	self.batch_size = batch_size
 
         self.device = device
         self.model = model
