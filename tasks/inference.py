@@ -98,7 +98,7 @@ class InferenceTask(
             epsilon_dir=epsilon_dir,
             store_path=self.local_path(""),
         )
-        attack = torch.compile(attack, mode="max-autotune")
+        # attack = torch.compile(attack, mode="max-autotune")
 
         print("Loading Dataset")
         files = self.input()["test_dataset"]["file_list"].load().split("\n")

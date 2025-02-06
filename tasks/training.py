@@ -162,7 +162,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             epsilon_dir=epsilon_dir,
             store_path=self.local_path(""),
         )
-        attack = torch.compile(attack, mode="max-autotune")
+        # attack = torch.compile(attack, mode="max-autotune")
 
         print("Model construction")
         if self.resume_training or self.resume_epoch or self.extend_training:

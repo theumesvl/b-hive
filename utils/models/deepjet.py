@@ -28,6 +28,8 @@ from utils.models.helpers import DenseClassifier, InputProcess
 from utils.plotting.termplot import terminal_roc
 from utils.torch import DeepJetDataset
 
+from tqdm import tqdm
+
 
 torch.multiprocessing.set_sharing_strategy("file_system")
 
@@ -280,7 +282,7 @@ class DeepJet(Classifier, nn.Module):
             truth,
             weight,
             process,
-        ) in dataloader:
+        ) in tqdm(dataloader):
             # append jet_pt and jet_eta
             # this should be done differenlty in the future... avoid array slicing with magic numbers!
             torch.backends.cudnn.enabled = False

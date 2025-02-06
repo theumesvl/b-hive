@@ -110,6 +110,23 @@ class Attacks:
                     )
         return adversarial_inputs
 
+    def optimizer_constraints(
+        self, nominal_inputs, adversarial_inputs, uncertainty, model
+    ):
+        scalers = []
+        with torch.no_grad():
+            for nominal in nominal_inputs:
+                scaler = torch.max(torch.abs(nominal), 0)[0]
+                scaler = torch.where(scaler == 0, 1, scaler)
+                scalers.append(scaler)
+
+        summation = 0
+        for nominal, adversarial, scaler in zip(
+            nominal_inputs, adversarial_inputs, scalers
+        ):
+            summation += (((nominal - adversarial) / (scaler * uncertainty)) ** 2).sum()
+        return summation / (model.feature_edges[-1] * nominal_inputs[0].shape[0])
+
     def pgd(self, inputs, truth, model, criterion):
         alphas = []
         for e in self.epsilons_per_feature:
@@ -121,7 +138,7 @@ class Attacks:
                 input.detach().clone().to(self.device).requires_grad_(True)
             )
 
-        for i in tqdm(range(self.iterations)):
+        for i in range(self.iterations):
             prediction = model.forward(*adversarial_inputs)
 
             loss = criterion(prediction, truth).mean()
@@ -301,11 +318,6 @@ class Attacks:
         for i in range(batch_size):
             goal_score[i, truth[i]] = 0
 
-        scalers = []
-        with torch.no_grad():
-            for input in inputs:
-                scalers.append(torch.max(input, 0)[0])
-
         adversarial_inputs = []
         for input in inputs:
             adversarial_inputs.append(
@@ -316,15 +328,20 @@ class Attacks:
 
         objective_score = []
         predictions = []
-        for i in tqdm(range(self.iterations)):
+        for i in range(self.iterations):
             adversarial_prediction = softmax(model.forward(*adversarial_inputs))
-
+            """
             with torch.no_grad():
                 predictions.append(
                     adversarial_prediction.detach().clone().cpu().numpy()
                 )
-
-            constraints = 0  # has to be \frac{1}{N} * \sum_{i=1}^{N} \frac{x_0^i - x_adv^i}{s * x_0^i}^2
+            """
+            constraints = self.optimizer_constraints(
+                inputs,
+                adversarial_inputs,
+                1e10,
+                model,
+            )
             objective = (
                 (constraints - (goal_score - adversarial_prediction) ** 2)
             ).mean()
@@ -348,8 +365,8 @@ class Attacks:
 
         best_fit = self.limit_relative_change(inputs, best_fit)
 
-        predictions = np.concatenate(predictions)
+        # predictions = np.concatenate(predictions)
 
         np.save(f"{self.work_dir}loss_optimizer.npy", np.asarray(objective_score))
-        np.save(f"{self.work_dir}predictions.npy", predictions)
-        return *best_fit, truth
+        # np.save(f"{self.work_dir}predictions.npy", predictions)
+        return *[input.detach() for input in best_fit], truth
