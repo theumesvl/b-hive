@@ -15,6 +15,7 @@ class LZ4PAIReDDataset(IterableDataset):
         self,
         files,
         model,
+        config_truths,
         data_type="training",
         weighted_sampling=False,
         device="cpu",
@@ -25,6 +26,7 @@ class LZ4PAIReDDataset(IterableDataset):
         verbose=0,
         config=None,
         batch_size=512,
+        all_number_of_samples=None,
     ):
         self.verbose = verbose
         self.files = files
