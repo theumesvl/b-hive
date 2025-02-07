@@ -780,7 +780,7 @@ class UParT_v0(Classifier_base):
                     task, advance=1, description=f"Training...   | Loss: {loss:.4f}, lr: {curr_lr:.5f}"
                 )
                 progress.columns[-1].text_format = "{}/{} its".format(
-                    N // dataloader.batch_size,
+                    N // dataloader.dataset.batch_size,
                     (
                         "?"
                         if dataloader.nits_expected == len(dataloader)
@@ -788,12 +788,78 @@ class UParT_v0(Classifier_base):
                     ),
                 )
             progress.update(task, completed=dataloader.nits_expected)
-        dataloader.nits_expected = N // dataloader.batch_size
+        dataloader.nits_expected = N // dataloader.dataset.batch_size
         accuracy /= N
         print("  ", f"Average loss: {np.array(losses).mean():.4f}")
         print("  ", f"Average accuracy: {float(100*accuracy):.4f}")
 
         return np.array(losses).mean(), float(accuracy), elapsed_column.elapsed_time
+        
+    def validate_model(self, dataloader, loss_fn, device="cpu", verbose=True, terminal_plot=False):
+        losses = 0.0
+        accuracy = 0.0
+        self.eval()
+
+        predictions = np.empty((0, len(self.classes)))
+        truths = np.empty((0))
+        processes = np.empty((0))
+
+        elapsed_column = CustomTimeElapsedColumn()
+
+        with Progress(
+            TextColumn("{task.description}"),
+            elapsed_column,
+            BarColumn(bar_width=None),
+            TaskProgressColumn(),
+            TimeRemainingColumn(),
+            TextColumn("0/? its"),
+            expand=True,
+        ) as progress:
+            N = 1
+            task = progress.add_task("Validation...", total=dataloader.nits_expected)
+            for b, (x, truth, w, process) in enumerate(dataloader):
+                
+                x = x.float().to(device, non_blocking=True)
+                truth = truth.type(torch.LongTensor).to(device, non_blocking=True)
+                w = w.float().to(device, non_blocking=True)
+
+                with torch.no_grad():
+                    if self.use_torch_compile:
+                        pred, loss = self.compile_step(x, truth, loss_fn, device=device, mixed_precision=self.mixed_precision)
+                    else:
+                        pred, loss = self.step(x, truth, loss_fn, device=device, mixed_precision=self.mixed_precision)
+                        
+                    losses += loss.item()
+
+                    accuracy += (
+                        (pred.argmax(1) == truth.to(device))
+                        .type(torch.float)
+                        .sum()
+                        .item()
+                    )
+                    if(terminal_plot):
+                        predictions = np.append(predictions, pred.to("cpu").numpy(), axis=0)
+                        truths = np.append(truths, truth.to("cpu").numpy(), axis=0)
+                        processes = np.append(processes, process.to("cpu").numpy(), axis=0)
+                    
+                N += len(pred)
+                progress.update(
+                    task, advance=1, description=f"Validation... | Loss: {loss:.2f}"
+                )
+                progress.columns[-1].text_format = "{}/{} its".format(
+                    N // dataloader.dataset.batch_size, f"~{dataloader.nits_expected}"
+                )
+            progress.update(task, completed=dataloader.nits_expected)
+        dataloader.nits_expected = N // dataloader.dataset.batch_size
+        accuracy /= N
+        print("  ", f"Validation loss: {losses/(b+1):.4f}")
+        print("  ", f"Validation accuracy: {float(100*accuracy):.4f}")
+
+        if verbose and terminal_plot:
+            print("Printing terminal ROC")
+            terminal_roc(predictions, truths, title="Validation ROC")
+
+        return losses/(b+1), float(accuracy), elapsed_column.elapsed_time
          
     def train_model(
         self,
@@ -939,7 +1005,7 @@ class UParT_v0(Classifier_base):
                     task, advance=1, description=f"Inference...   | Loss: {loss:.2f}"
                 )
                 progress.columns[-1].text_format = "{}/{} its".format(
-                    N // dataloader.batch_size, dataloader.nits_expected
+                    N // dataloader.dataset.batch_size, dataloader.nits_expected
                 )
             progress.update(task, completed=dataloader.nits_expected)
 

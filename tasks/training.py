@@ -139,18 +139,18 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             "validation_metrics": self.local_target("validation_metrics.npz"),
             "model": (
                 self.local_target(f"model_{self.epochs-1 + self.extend_training}.pt")
-                if issubclass(type(BTaggingModels(self.model_name, ConfigLoader.load_config(self.config))), Module)
+                if issubclass(type(BTaggingModels(self.model_name, ConfigLoader.load_config(self.config))), torch.nn.Module)
                 else self.local_target(f"model_{self.epochs-1}.keras")
             ),
             "best_model": (
                 self.local_target("best_model.pt")
-                if issubclass(type(BTaggingModels(self.model_name, ConfigLoader.load_config(self.config))), Module)
+                if issubclass(type(BTaggingModels(self.model_name, ConfigLoader.load_config(self.config))), torch.nn.Module)
                 else self.local_target(f"best_model.keras")
             ),
         }
 
     def run(self):
-        DataLoader, torch, np, pick_attack, plot_roc_list, plot_losses, plot_accuracy, SchedulerLoader, OptimizerLoader, DatasetLoader, Moodule = import_libraries()
+        DataLoader, torch, np, pick_attack, plot_roc_list, plot_losses, plot_accuracy, SchedulerLoader, OptimizerLoader, DatasetLoader, Module = import_libraries()
         # with memray.Tracker("/net/scratch_cms3a/uwillemsen/condor/b-hive/output/memory_screening/half_training_interactive_data_04_60GB.bin"): #full_training_data_04_cs50000/full_training_high_ram_01_v1_eps10.bin
         #     print("Allocations will be tracked until the with block ends")
         # enable memory history, which will

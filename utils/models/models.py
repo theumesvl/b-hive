@@ -10,7 +10,7 @@ class ModelName:
     DeepJetTransformer = "DeepJetTransformer"
     DeepJetTransformerHLT = "DeepJetTransformerHLT"
     GlobalDeepJetTransformerHLT = "GlobalDeepJetTransformerHLT"
-    #ParticleNet = "ParticleNet"
+    ParticleNet = "ParticleNet"
     ParticleNet_InPro = "ParticleNet_InPro"
     ParticleNet_InProHLT = "ParticleNet_InProHLT"
     ParticleNetHION = "ParticleNetHION"
@@ -64,8 +64,6 @@ def BTaggingModels(model: str = "", *args, **kwargs):
         case ModelName.ParticleNet_InProHLT:
             from utils.models.particlenet_InPro import ParticleNetTaggerHLT as ParticleNet_InProHLT
             return ParticleNet_InProHLT(*args, **kwargs)
-        #case ModelName.ParticleNet:
-        #    return ParticleNetTagger(*args, **kwargs)
         case ModelName.L1TKerasDeepSet:
             from utils.models.l1t_kerasDeepset import L1TKerasDeepSet
             return L1TKerasDeepSet(*args, **kwargs)

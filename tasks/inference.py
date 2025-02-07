@@ -14,6 +14,7 @@ from utils.config.config_loader import ConfigLoader
 from utils.models.models import BTaggingModels
 from utils.plotting.termplot import terminal_roc
 from utils.torch.DatasetLoader import DatasetLoader
+import lz4.frame
 
 import law
 
@@ -21,7 +22,6 @@ def import_libraries():
     from torch.utils.data import DataLoader
     import torch
     import numpy as np
-    import lz4.frame
 
     return DataLoader, torch, np 
 
@@ -151,7 +151,7 @@ class InferenceTask(
         )
         test_dataloader = DataLoader(
             test_data,
-            batch_size=self.batch_size,
+            batch_size=self.batch_size if ((config["dataset"] != "LZ4FP16Dataset") and (config["dataset"] != "LZ4Dataset")) else None,
             num_workers=self.n_threads,
             pin_memory=True,  # Pin Memory for faster CPU/GPU memory load
         )
