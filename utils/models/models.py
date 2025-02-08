@@ -3,6 +3,7 @@ class ModelName:
     DeepJetHLT = "DeepJetHLT"
     MoDJet = "MoDJet"
     ParticleTransformer = "ParticleTransformer"
+    ParticleTransformer2 = "ParticleTransformer2"
     ParticleTransformerHLT = "ParticleTransformerHLT"
     GlobalParticleTransformerHLT = "GlobalParticleTransformerHLT"
     UParT_v0 = "UParT_v0"
@@ -37,6 +38,9 @@ def BTaggingModels(model: str = "", *args, **kwargs):
         case ModelName.ParticleTransformer:
             from utils.models.particletransformer import ParticleTransformer
             return ParticleTransformer(*args, **kwargs)
+        case ModelName.ParticleTransformer2:
+            from utils.models.particletransformer2 import ParticleTransformer2
+            return ParticleTransformer2(*args, **kwargs)
         case ModelName.ParticleTransformerHLT:
             from utils.models.particletransformer import ParticleTransformerHLT
             return ParticleTransformerHLT(*args, **kwargs)
