@@ -306,7 +306,6 @@ class Attacks:
 
         return *[input.detach() for input in adversarial_inputs], truth
 
-    # Work in progress
     def optimizer(self, inputs, truth, model, criterion):
         softmax = torch.nn.Softmax(dim=-1)
         masks = self.create_default_integer_mask(inputs)
@@ -337,15 +336,8 @@ class Attacks:
         minimizer = torch.optim.Adam(params=adversarial_inputs, lr=self.epsilon)
 
         objective_score = []
-        # predictions = []
         for i in range(self.iterations):
             adversarial_prediction = softmax(model.forward(*adversarial_inputs))
-            """
-            with torch.no_grad():
-                predictions.append(
-                    adversarial_prediction.detach().clone().cpu().numpy()
-                )
-            """
             constraints = self.optimizer_constraints(
                 inputs,
                 adversarial_inputs,
@@ -375,9 +367,4 @@ class Attacks:
                 ]
 
         best_fit = self.limit_relative_change(inputs, best_fit)
-
-        # predictions = np.concatenate(predictions)
-
-        # np.save(f"{self.work_dir}loss_optimizer.npy", np.asarray(objective_score))
-        # np.save(f"{self.work_dir}predictions.npy", predictions)
         return *[input.detach() for input in best_fit], truth
