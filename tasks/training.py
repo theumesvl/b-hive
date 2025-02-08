@@ -18,6 +18,7 @@ from utils.models.models import BTaggingModels
 from utils.plotting.roc import plot_roc_list, plot_losses
 from torch.nn import Module
 
+
 def import_libraries():
     from torch.utils.data import DataLoader
     import torch
@@ -28,8 +29,19 @@ def import_libraries():
     from utils.optimizing.SchedulerLoader import SchedulerLoader
     from utils.optimizing.OptimizerLoader import OptimizerLoader
     from utils.torch.DatasetLoader import DatasetLoader
-    
-    return DataLoader, torch, np, pick_attack, plot_roc_list, plot_losses, SchedulerLoader, OptimizerLoader, DatasetLoader
+
+    return (
+        DataLoader,
+        torch,
+        np,
+        pick_attack,
+        plot_roc_list,
+        plot_losses,
+        SchedulerLoader,
+        OptimizerLoader,
+        DatasetLoader,
+    )
+
 
 # debug
 import psutil
@@ -112,18 +124,42 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             "validation_metrics": self.local_target("validation_metrics.npz"),
             "model": (
                 self.local_target(f"model_{self.epochs-1 + self.extend_training}.pt")
-                if issubclass(type(BTaggingModels(self.model_name, ConfigLoader.load_config(self.config))), Module)
+                if issubclass(
+                    type(
+                        BTaggingModels(
+                            self.model_name, ConfigLoader.load_config(self.config)
+                        )
+                    ),
+                    Module,
+                )
                 else self.local_target(f"model_{self.epochs-1}.keras")
             ),
             "best_model": (
                 self.local_target("best_model.pt")
-                if issubclass(type(BTaggingModels(self.model_name, ConfigLoader.load_config(self.config))), Module)
+                if issubclass(
+                    type(
+                        BTaggingModels(
+                            self.model_name, ConfigLoader.load_config(self.config)
+                        )
+                    ),
+                    Module,
+                )
                 else self.local_target(f"best_model.keras")
             ),
         }
 
     def run(self):
-        DataLoader, torch, np, pick_attack, plot_roc_list, plot_losses, SchedulerLoader, OptimizerLoader, DatasetLoader = import_libraries()
+        (
+            DataLoader,
+            torch,
+            np,
+            pick_attack,
+            plot_roc_list,
+            plot_losses,
+            SchedulerLoader,
+            OptimizerLoader,
+            DatasetLoader,
+        ) = import_libraries()
         self.set_device()
         # with memray.Tracker("/net/scratch_cms3a/uwillemsen/condor/b-hive/output/memory_screening/half_training_interactive_data_04_60GB.bin"): #full_training_data_04_cs50000/full_training_high_ram_01_v1_eps10.bin
         #     print("Allocations will be tracked until the with block ends")
@@ -198,7 +234,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
 
         # Picking attack
         print(
-            rf"Will apply {self.attack} attack with epsilon={self.attack_magnitude} (individual attack magnitude: {self.attack_individual_factors}) and {self.attack_iterations} iterations."
+            rf"Applying {self.attack} attack (attack_magnitude={self.attack_magnitude}, n_iterations={self.attack_iterations}, attack_uncertainty={self.attack_uncertainty})."
         )
         epsilon_dir = (
             self.input()["file_list"].path.strip("processed_files.txt") + "epsilons/"
@@ -218,7 +254,10 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             number_classes=len(model.classes),
             overshoot=self.attack_overshoot,
             epsilon_dir=epsilon_dir,
+            store_path=self.local_path(""),
+            uncertainty=self.attack_uncertainty,
         )
+        attack = torch.compile(attack, mode="max-autotune")
 
         print("Model construction")
         if self.resume_training or self.resume_epoch or self.extend_training:
@@ -345,5 +384,5 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             output_dir=self.local_path(),
             epochs=self.epochs + self.extend_training,
         )
-        
+
         print("Training finished.")

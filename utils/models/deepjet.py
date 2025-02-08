@@ -28,6 +28,8 @@ from utils.models.helpers import DenseClassifier, InputProcess
 from utils.plotting.termplot import terminal_roc
 from utils.torch import DeepJetDataset
 
+from tqdm import tqdm
+
 
 torch.multiprocessing.set_sharing_strategy("file_system")
 
@@ -280,7 +282,7 @@ class DeepJet(Classifier, nn.Module):
             truth,
             weight,
             process,
-        ) in dataloader:
+        ) in tqdm(dataloader):
             # append jet_pt and jet_eta
             # this should be done differenlty in the future... avoid array slicing with magic numbers!
             torch.backends.cudnn.enabled = False
@@ -317,6 +319,24 @@ class DeepJet(Classifier, nn.Module):
             cpf_list.append(cpf_features.cpu().numpy())
             npf_list.append(npf_features.cpu().numpy())
             vtx_list.append(vtx_features.cpu().numpy())
+        """
+        np.save(
+            "/net/data_cms3a/ajung/b-hive/DatasetConstructorTask/mod_offline_run3/part_2024_test_small/minimizer_15/glob.npy",
+            np.concatenate(glob_list),
+        )
+        np.save(
+            "/net/data_cms3a/ajung/b-hive/DatasetConstructorTask/mod_offline_run3/part_2024_test_small/minimizer_15/cpf.npy",
+            np.concatenate(cpf_list),
+        )
+        np.save(
+            "/net/data_cms3a/ajung/b-hive/DatasetConstructorTask/mod_offline_run3/part_2024_test_small/minimizer_15/npf.npy",
+            np.concatenate(npf_list),
+        )
+        np.save(
+            "/net/data_cms3a/ajung/b-hive/DatasetConstructorTask/mod_offline_run3/part_2024_test_small/minimizer_15/vtx.npy",
+            np.concatenate(vtx_list),
+        )
+        """
 
         predictions = np.concatenate(predictions)
         kinematics = np.concatenate(kinematics)
