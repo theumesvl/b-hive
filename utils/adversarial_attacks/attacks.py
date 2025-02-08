@@ -3,6 +3,7 @@ import torch
 
 
 torch.multiprocessing.set_sharing_strategy("file_system")
+torch.set_float32_matmul_precision("medium")
 
 
 class Attacks:
@@ -335,8 +336,8 @@ class Attacks:
 
         minimizer = torch.optim.Adam(params=adversarial_inputs, lr=self.epsilon)
 
-        objective_score = []
-        predictions = []
+        # objective_score = []
+        # predictions = []
         for i in range(self.iterations):
             adversarial_prediction = softmax(model.forward(*adversarial_inputs))
             """

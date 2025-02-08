@@ -140,7 +140,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
 
         # Picking attack
         print(
-            rf"Will apply {self.attack} attack with epsilon={self.attack_magnitude} (individual attack magnitude: {self.attack_individual_factors}) and {self.attack_iterations} iterations."
+            rf"Applying {self.attack} attack (attack_magnitude={self.attack_magnitude}, n_iterations={self.attack_iterations}, attack_uncertainty={self.attack_uncertainty})."
         )
         epsilon_dir = (
             self.input()["file_list"].path.strip("processed_files.txt") + "epsilons/"

@@ -75,7 +75,7 @@ class InferenceTask(
 
         # Picking attack
         print(
-            rf"Will apply {self.test_attack} attack with epsilon={self.test_attack_magnitude} (individual attack magnitude: {self.test_attack_individual_factors}) and {self.test_attack_iterations} iterations."
+            rf"Applying {self.test_attack} attack (attack_magnitude={self.test_attack_magnitude}, n_iterations={self.test_attack_iterations}, attack_uncertainty={self.test_attack_uncertainty})."
         )
         epsilon_dir = (
             self.input()["test_dataset"]["file_list"].path.strip("processed_files.txt")
