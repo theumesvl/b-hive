@@ -336,7 +336,7 @@ class Attacks:
 
         minimizer = torch.optim.Adam(params=adversarial_inputs, lr=self.epsilon)
 
-        # objective_score = []
+        objective_score = []
         # predictions = []
         for i in range(self.iterations):
             adversarial_prediction = softmax(model.forward(*adversarial_inputs))
