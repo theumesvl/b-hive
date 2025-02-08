@@ -89,6 +89,10 @@ class AttackDependency(object):
         default=0.02,
         description="Only use in combination with attack==jetfool. Used to prevent vanishing updates.",
     )
+    attack_uncertainty = luigi.FloatParameter(
+        default=1.0,
+        description="Only use in combination with attack==optimizer. Sets the allowed and scaled global uncertainty for input features.",
+    )
 
     def store_parts(self):
         parts = super().store_parts()
@@ -99,6 +103,8 @@ class AttackDependency(object):
             parts += ("iterations_{}".format(self.attack_iterations),)
         if self.attack == "jetfool":
             parts += ("overshoot_{}".format(self.attack_overshoot),)
+        if self.attack == "optimizer":
+            parts += ("uncertainty_{}".format(self.attack_uncertainty),)
 
         return parts
 
@@ -132,6 +138,10 @@ class TestAttackDependency(object):
         default=0.02,
         description="Only use in combination with attack==jetfool. Used to prevent vanishing updates.",
     )
+    test_attack_uncertainty = luigi.FloatParameter(
+        default=1.0,
+        description="Only use in combination with attack==optimizer. Sets the allowed and scaled global uncertainty for input features.",
+    )
 
     def store_parts(self):
         parts = super().store_parts()
@@ -140,8 +150,9 @@ class TestAttackDependency(object):
         if self.test_attack_magnitude > 0.0:
             parts += ("test_epsilon_{}".format(self.test_attack_magnitude),)
             parts += ("test_iterations_{}".format(self.test_attack_iterations),)
-
-        if self.attack == "jetfool":
+        if self.test_attack == "jetfool":
             parts += ("test_overshoot_{}".format(self.test_attack_overshoot),)
+        if self.test_attack == "optimizer":
+            parts += ("uncertainty_{}".format(self.test_attack_uncertainty),)
 
         return parts

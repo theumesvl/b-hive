@@ -161,8 +161,10 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             overshoot=self.attack_overshoot,
             epsilon_dir=epsilon_dir,
             store_path=self.local_path(""),
+            uncertainty=self.attack_uncertainty,
+            batch_size=self.batch_size,
         )
-        # attack = torch.compile(attack, mode="max-autotune")
+        attack = torch.compile(attack, mode="max-autotune")
 
         print("Model construction")
         if self.resume_training or self.resume_epoch or self.extend_training:

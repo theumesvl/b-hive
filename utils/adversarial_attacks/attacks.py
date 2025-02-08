@@ -1,4 +1,3 @@
-from tqdm import tqdm
 import numpy as np
 import torch
 
@@ -22,6 +21,8 @@ class Attacks:
         overshoot=0.02,
         epsilon_dir="",
         store_path="",
+        uncertainty=1.0,
+        batch_size=1000,
         **kwargs,
     ):
         super(Attacks, self).__init__(**kwargs)
@@ -34,7 +35,7 @@ class Attacks:
             number_classes, device=self.device, pin_memory=True
         )
         self.input_keys = input_keys
-        self.epsilon = epsilon
+        self.epsilon = torch.tensor(epsilon, device=self.device, pin_memory=True)
         if epsilon_factors:
             self.epsilons_per_feature = [
                 torch.from_numpy(
@@ -56,7 +57,11 @@ class Attacks:
         self.restrict_impact = restrict_impact
         self.integers = [integer.to(self.device) for integer in integer_positions]
         self.defaults = [default.to(self.device) for default in default_values]
-        self.overshoot = overshoot
+        self.overshoot = torch.tensor(overshoot, device=self.device, pin_memory=True)
+        self.uncertainty = torch.tensor(
+            uncertainty, device=self.device, pin_memory=True
+        )
+        self.batch_size = torch.tensor(batch_size, device=self.device, pin_memory=True)
 
     def nominal(self, inputs, truth, model, criterion):
         return *inputs, truth
@@ -124,8 +129,13 @@ class Attacks:
         for nominal, adversarial, scaler in zip(
             nominal_inputs, adversarial_inputs, scalers
         ):
-            summation += (((nominal - adversarial) / (scaler * uncertainty)) ** 2).sum()
-        return summation / (model.feature_edges[-1] * nominal_inputs[0].shape[0])
+            summation += torch.sum(
+                ((nominal - adversarial) / (scaler * uncertainty)) ** 2
+            )
+        summation /= (
+            torch.tensor(model.feature_edges[-1]).to(self.device) * self.batch_size
+        )
+        return summation
 
     def pgd(self, inputs, truth, model, criterion):
         alphas = []
@@ -174,7 +184,6 @@ class Attacks:
 
     # Code adapted from https://github.com/LTS4/DeepFool, based on https://arxiv.org/pdf/1511.04599.pdf
     def jetfool(self, inputs, truth, model, criterion):
-        batch_size = inputs[0].shape[0]
 
         prediction = model.forward(*inputs)
         I = torch.argsort(prediction, dim=1, descending=True)
@@ -197,16 +206,13 @@ class Attacks:
 
         k_i = label
 
-        def generator():
-            while torch.any(k_i == label).item() and loop < self.iterations:
-                yield
-
-        for _ in tqdm(generator()):
+        while torch.any(k_i == label).item() and loop < self.iterations:
             perturbations = [self.torch_inf for i in range(len(inputs))]
 
             fs_sorted = torch.gather(fs, 1, I)
             fs_sorted[:, 0].backward(
-                gradient=torch.ones(batch_size, device=self.device), retain_graph=True
+                gradient=torch.ones(self.batch_size, device=self.device),
+                retain_graph=True,
             )
 
             original_gradients = []
@@ -218,7 +224,7 @@ class Attacks:
                     input.grad.zero_()
 
                 fs_sorted[:, c].backward(
-                    gradient=torch.ones(batch_size, device=self.device),
+                    gradient=torch.ones(self.batch_size, device=self.device),
                     retain_graph=True,
                 )
 
@@ -237,7 +243,7 @@ class Attacks:
                 new_perturbations = []
                 for w_c in w_cs:
                     new_perturbation = torch.abs(f_c) / torch.linalg.norm(
-                        w_c.reshape(batch_size, -1), axis=1
+                        w_c.reshape(self.batch_size, -1), axis=1
                     )
                     new_perturbations.append(
                         torch.where(
@@ -269,7 +275,11 @@ class Attacks:
                         w
                         * (
                             (perturbation + 1e-4)
-                            / (torch.linalg.norm(w.reshape(batch_size, -1), axis=1))
+                            / (
+                                torch.linalg.norm(
+                                    w.reshape(self.batch_size, -1), axis=1
+                                )
+                            )
                         ).reshape(*shape),
                         nan=0.0,
                         posinf=0.0,
@@ -302,20 +312,22 @@ class Attacks:
         return *[input.detach() for input in adversarial_inputs], truth
 
     # Work in progress
-    def minimizer(self, inputs, truth, model, criterion):
+    def optimizer(self, inputs, truth, model, criterion):
         softmax = torch.nn.Softmax(dim=-1)
         masks = self.create_default_integer_mask(inputs)
         min_loss = self.torch_inf
-        batch_size = inputs[0].shape[0]
 
         goal_score = (
             1
             / (self.number_classes - 1)
             * torch.ones(
-                batch_size, self.number_classes, device=self.device, requires_grad=False
+                self.batch_size,
+                self.number_classes,
+                device=self.device,
+                requires_grad=False,
             )
         )
-        for i in range(batch_size):
+        for i in range(self.batch_size):
             goal_score[i, truth[i]] = 0
 
         adversarial_inputs = []
@@ -339,12 +351,12 @@ class Attacks:
             constraints = self.optimizer_constraints(
                 inputs,
                 adversarial_inputs,
-                1e10,
+                self.uncertainty,
                 model,
             )
-            objective = (
-                (constraints - (goal_score - adversarial_prediction) ** 2)
-            ).mean()
+            objective = constraints - torch.mean(
+                (goal_score - adversarial_prediction) ** 2
+            )
 
             minimizer.zero_grad(set_to_none=True)
             objective.backward(retain_graph=False)
