@@ -98,7 +98,6 @@ class InferenceTask(
             epsilon_dir=epsilon_dir,
             store_path=self.local_path(""),
             uncertainty=self.test_attack_uncertainty,
-            batch_size=self.batch_size,
         )
         attack = torch.compile(attack, mode="max-autotune")
 
