@@ -99,11 +99,12 @@ class FFNBlock(nn.Module):
         self.activation = SwiGLU() if swiglu else nn.SiLU()
         self.dense_2 = nn.Linear(dim * 4, dim)
         self.dropout = nn.Dropout(dropout)
+        self.attn_norm = RMSNorm(dim*4)
 
     def forward(self, x):
         x_proj = self.dense_1(x)
 
-        x = self.activation(x_proj)
+        x = self.attn_norm(self.activation(x_proj))
 
         x = self.dense_2(x)
         x = self.dropout(x)
@@ -151,7 +152,7 @@ def to_ptrapphim(x, return_mass=True, eps=1e-8, for_onnx=False):
     # x: (N, 4, ...), dim1 : (px, py, pz, E)
     px, py, pz, energy = x[:, :4, :].split((1, 1, 1, 1), dim=1)
     pt = torch.sqrt(to_pt2(x, eps=eps))
-    rapidity = 0.5 * torch.log(1 + (2 * pz) / (energy - pz).clamp(min=1e-20))
+    rapidity = 0.5 * torch.log((1 + (2 * pz) / (energy - pz).clamp(min=1e-20)).clamp(min=1e-21))
     phi = (atan2 if for_onnx else torch.atan2)(py, px)
 
     if not return_mass:
@@ -178,13 +179,12 @@ def p3_norm(p, eps=1e-8):
     return p[:, :3] / p[:, :3].norm(dim=1, keepdim=True).clamp(min=eps)
 
 
-def pairwise_lv_fts(xi, xj, xsum, num_outputs=4, eps=1e-8, for_onnx=False):
+def pairwise_lv_fts(xi, xj, num_outputs=4, eps=1e-8, for_onnx=False):
     pti, rapi, phii = to_ptrapphim(xi, False, eps=None, for_onnx=for_onnx).split((1, 1, 1), dim=1)
     ptj, rapj, phij = to_ptrapphim(xj, False, eps=None, for_onnx=for_onnx).split((1, 1, 1), dim=1)
-    ptall, *_ = to_ptrapphim(xsum, False, eps=None, for_onnx=for_onnx).split((1, 1, 1), dim=1)
 
-    ai = torch.ne(pti, 0.0).float()
-    aj = torch.ne(ptj, 0.0).float()
+    ai = torch.ne(pti, 0.0).to(xi.dtype)
+    aj = torch.ne(ptj, 0.0).to(xi.dtype)
     mask = ai * aj
 
     delta = delta_r2(rapi, phii, rapj, phij).sqrt()
@@ -194,30 +194,28 @@ def pairwise_lv_fts(xi, xj, xsum, num_outputs=4, eps=1e-8, for_onnx=False):
 
     if num_outputs > 1:
         ptmin = ((pti <= ptj) * pti + (pti > ptj) * ptj) if for_onnx else torch.minimum(pti, ptj)
-        lnkt = torch.log((ptmin * delta).clamp(min=eps))
-        lnktrel = lnkt - torch.log(ptall.clamp(min=eps))
-        lnz = torch.log((ptmin / (pti + ptj).clamp(min=eps)).clamp(min=eps))
-        outputs = [lnkt, lnktrel + 7.5, lnz, lndelta]
+        lnkt = torch.log((ptmin * delta).clamp(min=eps) + 1)
+        lnz = torch.log((ptmin / (pti + ptj).clamp(min=eps)).clamp(min=eps) + 1)
+        outputs = [lnkt, lnz, lndelta]
 
-    if num_outputs > 4:
+    if num_outputs > 3:
         xij = xi + xj
-        lnm2 = torch.log(to_m2(xij, eps=eps))
-        lnm2rel = lnm2 - torch.log(to_m2(xsum, eps=eps))
-        outputs.extend([lnm2, lnm2rel + 10.])
+        lnm2 = torch.log(to_m2(xij, eps=eps) + 1)
+        outputs.append(lnm2)
 
     if num_outputs > 6:
-        dij = xi - xj
-        dotij = xi*xj
-        lndiff = torch.log((normsq4_v2(dij)+1).clamp(min=eps))
-        lndot = torch.log((normsq4_v2(dotij)+1).clamp(min=eps))
-        outputs += [lndiff.unsqueeze(dim=1), lndot.unsqueeze(dim=1)]
-        
+        ei, ej = xi[:, 3:4], xj[:, 3:4]
+        emin = ((ei <= ej) * ei + (ei > ej) * ej) if for_onnx else torch.minimum(ei, ej)
+        lnet = torch.log((emin * delta).clamp(min=eps))
+        lnze = torch.log((emin / (ei + ej).clamp(min=eps)).clamp(min=eps))
+        outputs += [lnet, lnze]
+
     if num_outputs > 8:
         costheta = (p3_norm(xi, eps=eps) * p3_norm(xj, eps=eps)).sum(dim=1, keepdim=True)
         sintheta = (1 - costheta**2).clamp(min=0, max=1).sqrt()
         outputs += [costheta, sintheta]
 
-    #assert len(outputs) == num_outputs
+    assert len(outputs) == num_outputs
     o = torch.cat(outputs, dim=1) * mask
     return o
 
@@ -282,14 +280,12 @@ def tril_indicesNEW(rows, cols, offset=0):
 
 class PairEmbed(nn.Module):
     def __init__(
-        self, input_dim, dims, normalize_input=True, activation="silu", eps=1e-8, for_onnx=False
+        self, input_dim, dims, normalize_input=True, activation="SiLU", eps=1e-8, for_onnx=False
     ):
         super().__init__()
 
         self.for_onnx = for_onnx
-        self.inpt_dims = input_dim
-
-        self.pairwise_lv_fts = partial(pairwise_lv_fts, num_outputs=input_dim, eps=eps, for_onnx=for_onnx)
+        self.pairwise_lv_fts = partial(pairwise_lv_fts, num_outputs=4, eps=eps, for_onnx=for_onnx)
 
         module_list = []
         for dim in dims:
@@ -305,23 +301,21 @@ class PairEmbed(nn.Module):
 
         self.out_dim = dims[-1]
 
-    def forward(self, x, nsv):
+    def forward(self, x):
         batch_size, _, seq_len = x.size()
         if not self.for_onnx:
-            xsum = x[:,:,:-nsv].sum(dim=-1, keepdims=True)
             i, j = torch.tril_indices(seq_len, seq_len, offset=-1, device=x.device)
             x = x.unsqueeze(-1).repeat(1, 1, 1, seq_len)
             xi = x[:, :, i, j]  # (batch, dim, seq_len*(seq_len+1)/2)
             xj = x[:, :, j, i]
-            x = self.pairwise_lv_fts(xi, xj, xsum)
+            x = self.pairwise_lv_fts(xi, xj)
         else:
             i, j = tril_indicesNEW(seq_len, seq_len, offset=-1)  # old
             x = x.unsqueeze(-1).repeat(1, 1, 1, seq_len)
             xi = x[:, :, i, j]  # (batch, dim, seq_len*(seq_len+1)/2)
             xj = x[:, :, j, i]
             x = self.pairwise_lv_fts(xi, xj)
-
-        elements = self.embed(x)  # (batch, embed_dim, num_elements
+        elements = self.embed(x)  # (batch, embed_dim, num_elements)
 
         if not self.for_onnx:
             y = torch.zeros(
@@ -348,20 +342,19 @@ def tile(a, dim, n_tile):
     )
     return torch.index_select(a, dim, order_index)
 
-
 class InputConv(nn.Module):
 
     def __init__(self, in_chn, out_chn, dropout_rate = 0.1, **kwargs):
         super(InputConv, self).__init__(**kwargs)
         
         self.lin = torch.nn.Linear(in_chn, out_chn)
-        self.bn1 = RMSNorm(out_chn)
+        self.bn1 = RMSNorm(in_chn)
         self.act = nn.SiLU()
         self.dropout = nn.Dropout(dropout_rate)
 
     def forward(self, x, sc, skip = True):
         
-        x2 = self.dropout(self.bn1(self.act(self.lin(x))))
+        x2 = self.dropout(self.act(self.lin(self.bn1(x))))
         if skip:
             x = sc + x2
         else:
@@ -372,30 +365,25 @@ class InputProcess(nn.Module):
     def __init__(self, cpf_dim, npf_dim, vtx_dim, embed_dim, **kwargs):
         super(InputProcess, self).__init__(**kwargs)
 
-        self.cpf_bn0   = RMSNorm(cpf_dim, eps=0.001)
         self.cpf_conv1 = InputConv(cpf_dim, embed_dim)
         self.cpf_conv3 = InputConv(embed_dim * 1, embed_dim)
 
-        self.npf_bn0   = RMSNorm(npf_dim, eps=0.001)
         self.npf_conv1 = InputConv(npf_dim, embed_dim)
         self.npf_conv3 = InputConv(embed_dim * 1, embed_dim)
 
-        self.vtx_bn0   = RMSNorm(vtx_dim, eps=0.001)
         self.vtx_conv1 = InputConv(vtx_dim, embed_dim)
         self.vtx_conv3 = InputConv(embed_dim * 1, embed_dim)
 
     def forward(self, cpf, npf, vtx):
-        cpf = self.cpf_bn0(cpf)
+    
         cpf = self.cpf_conv1(cpf, cpf, skip=False)
-        cpf = self.cpf_conv3(cpf, cpf, skip=False)
+        cpf = self.cpf_conv3(cpf, cpf, skip=True)
 
-        npf = self.npf_bn0(npf)
         npf = self.npf_conv1(npf, npf, skip=False)
-        npf = self.npf_conv3(npf, npf, skip=False)
+        npf = self.npf_conv3(npf, npf, skip=True)
 
-        vtx = self.vtx_bn0(vtx)
         vtx = self.vtx_conv1(vtx, vtx, skip=False)
-        vtx = self.vtx_conv3(vtx, vtx, skip=False)
+        vtx = self.vtx_conv3(vtx, vtx, skip=True)
 
         out = torch.cat((cpf, npf, vtx), dim=1)
 
@@ -405,14 +393,14 @@ class AttentionPooling(nn.Module):
     def __init__(self, **kwargs):
         super(AttentionPooling, self).__init__(**kwargs)
 
-        self.ConvLayer = torch.Linear(128, 1)
+        self.ConvLayer = torch.nn.Conv1d(128, 1, kernel_size=1)
         self.Softmax = nn.Softmax(dim=-1)
-        self.bn = RMSNorm(128, eps=0.001)
+        self.bn = torch.nn.BatchNorm1d(128, eps=0.001, momentum=0.1)
         self.act = nn.SiLU()
         self.dropout = nn.Dropout(0.1)
 
     def forward(self, x):
-        a = self.ConvLayer(x, 1, 2).transpose(1, 2)
+        a = self.ConvLayer(torch.transpose(x, 1, 2))
         a = self.Softmax(a)
 
         y = torch.matmul(a, x)
@@ -433,29 +421,24 @@ class HF_TransformerEncoderLayer(nn.Module):
         d_model: the number of expected features in the input (required).
         nhead: the number of heads in the multiheadattention models (required).
         dropout: the dropout value (default=0.1).
-        activation: the activation function of intermediate layer, relu or silu (default=relu).
+        activation: the activation function of intermediate layer, relu or SiLU (default=relu).
     Examples::
        >>> encoder_layer = nn.TransformerEncoderLayer(d_model=512, nhead=8)
         >>> src = torch.rand(10, 32, 512)
         >>> out = encoder_layer(src)
     """
 
-    def __init__(self, d_model, nhead, dropout=0.1, ls_init=1e-5, activation="relu", swiglu=True):
+    def __init__(self, d_model, nhead, dropout=0.1, activation="relu", swiglu=True):
         super(HF_TransformerEncoderLayer, self).__init__()
-        
         # MultiheadAttention
         self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=True)
         
         # Implementation of Feedforward model
         self.attn_norm = RMSNorm(d_model)
         self.ffn_norm = RMSNorm(d_model)
-        self.ffn = FFNBlock(d_model,4,swiglu = swiglu)
-        
-        # Implementation of the LayerScale and DropPath
-        self.attn_layerscale = LayerScale(d_model, init_values=ls_init)
-        self.attn_droppath = DropPath(dropout*0.5)
-        self.ffn_layerscale = LayerScale(d_model, init_values=ls_init)
-        self.ffn_droppath = DropPath(dropout*0.5)
+        self.ffn = FFNBlock(d_model,4,swiglu = swiglu, dropout=dropout)
+
+        self.activation = nn.SiLU()  # _get_activation_fn(activation)
 
     def __setstate__(self, state):
         if "activation" not in state:
@@ -478,19 +461,17 @@ class HF_TransformerEncoderLayer(nn.Module):
             src,
             src,
             src,
-            attn_mask=mask,#merged_mask.reshape(-1, merged_mask.shape[2], merged_mask.shape[2]),
+            attn_mask=mask,
+            #attn_mask=merged_mask.reshape(-1, merged_mask.shape[2], merged_mask.shape[2]),
         )[0]
-        src = self.attn_droppath(self.attn_layerscale(src))
         src = residual + src
         residual = src
 
         src = self.ffn_norm(src) #Starting the Norm->FFN->LS->Dr series
         src = self.ffn(src)
-        src = self.ffn_droppath(self.ffn_layerscale(src))
         src = residual + src
         
         return src
-
 
 class HF_TransformerEncoder(nn.Module):
     r"""TransformerEncoder is a stack of N encoder layers
@@ -524,7 +505,7 @@ class HF_TransformerEncoder(nn.Module):
         mask = mask
         padding_mask = padding_mask
 
-        for idx, mod in enumerate(self.layers):
+        for mod in self.layers:
             output = mod(output, mask, padding_mask)
 
         return output
@@ -541,29 +522,25 @@ class CLS_TransformerEncoderLayer(nn.Module):
         d_model: the number of expected features in the input (required).
         nhead: the number of heads in the multiheadattention models (required).
         dropout: the dropout value (default=0.1).
-        activation: the activation function of intermediate layer, relu or silu(default=relu).
+        activation: the activation function of intermediate layer, relu or SiLU (default=relu).
     Examples::
         >>> encoder_layer = nn.TransformerEncoderLayer(d_model=512, nhead=8)
         >>> src = torch.rand(10, 32, 512)
         >>> out = encoder_layer(src)
     """
 
-    def __init__(self, d_model, nhead, dropout=0.1, ls_init=1e-5, activation="relu", swiglu=True):
+    def __init__(self, d_model, nhead, dropout=0.1, activation="relu", swiglu=True):
         super(CLS_TransformerEncoderLayer, self).__init__()
 
         self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=True)
 
         # Implementation of Feedforward model
-        self.cls_norm = RMSNorm(d_model)
         self.attn_norm = RMSNorm(d_model)
         self.ffn_norm = RMSNorm(d_model)
-        self.ffn = FFNBlock(d_model,4,swiglu = swiglu)
-        
-        # Implementation of the LayerScale and DropPath
-        self.attn_layerscale = LayerScale(d_model, init_values=ls_init)
-        self.attn_droppath = DropPath(dropout*0.5)
-        self.ffn_layerscale = LayerScale(d_model, init_values=ls_init)
-        self.ffn_droppath = DropPath(dropout*0.5)
+        self.cls_norm = RMSNorm(d_model)
+        self.ffn = FFNBlock(d_model,4,swiglu = swiglu, dropout=dropout)
+
+        self.activation = nn.SiLU()  # _get_activation_fn(activation)
 
     def __setstate__(self, state):
         if "activation" not in state:
@@ -587,16 +564,15 @@ class CLS_TransformerEncoderLayer(nn.Module):
         enc = self.cls_norm(cls_token)
         src = self.attn_norm(src)
         src = self.self_attn(enc, src, src, key_padding_mask=padding_mask)[0]
-        src = self.attn_droppath(self.attn_layerscale(src))
         src = residual + src
         residual = src
 
         src = self.ffn_norm(src) #Starting the Norm->FFN->LS->Dr series
         src = self.ffn(src)
-        src = self.ffn_droppath(self.ffn_layerscale(src))
         src = residual + src
         
         return src
+
 
 
 class CLS_TransformerEncoder(nn.Module):
@@ -642,14 +618,14 @@ def _get_clones(module, N):
 def _get_activation_fn(activation):
     if activation == "relu":
         return nn.ReLU()
-    elif activation == "silu":
-        return nn.SiLU()
+    elif activation == "SiLU":
+        return nn.ReLU()
 
-    raise RuntimeError("activation should be relu/silu, not {}".format(activation))
+    raise RuntimeError("activation should be relu/SiLU, not {}".format(activation))
 
 
 def build_E_p(tensor, is_cpf=False):  # pt, eta, phi, e (, coords)
-    out = torch.zeros(tensor.shape[0], tensor.shape[1], 4, device=tensor.device)
+    out = torch.zeros(tensor.shape[0], tensor.shape[1], 4, device=tensor.device, dtype=tensor.dtype)
     out[:, :, 0] = tensor[:, :, 0] * torch.cos(tensor[:, :, 2])  # Get px
     out[:, :, 1] = tensor[:, :, 0] * torch.sin(tensor[:, :, 2])  # Get py
     out[:, :, 2] = tensor[:, :, 0] * (0.5 * (torch.exp(tensor[:, :, 1]) - torch.exp(-tensor[:, :, 1])))  # torch.sinh(tensor[:,:,1]) #Get pz
@@ -668,7 +644,7 @@ def get_mass(x, eps=1e-8):
 
 
 class ParticleTransformer2(Classifier_base):
-    
+
     def __init__(
         self,
         config,
@@ -676,8 +652,6 @@ class ParticleTransformer2(Classifier_base):
         num_enc=3,
         num_head=8,
         embed_dim=128,
-        pair_kin_dim=6,
-        pair_trk_dim=7,
         for_inference=False,
         build_4v=True,
         swiglu=True,
@@ -688,22 +662,20 @@ class ParticleTransformer2(Classifier_base):
         self.config = config
         self.for_inference = for_inference
         self.build_4v = build_4v
-        
+        self.num_enc_layers = num_enc
+        self.num_head = num_head
+        self.dtype = torch.float16
+
         _, cpf_dim, npf_dim, vtx_dim = self.all_model_features_length()
         
         cpf_dim = cpf_dim - 4
         npf_dim = npf_dim - 4
         vtx_dim = vtx_dim - 4
 
-        self.num_enc_layers = num_enc
-        self.num_head = num_head
-        self.cpf_fts = cpf_dim
-        self.npf_fts = npf_dim
-        self.vtx_fts = vtx_dim
         self.InputProcess = InputProcess(cpf_dim, npf_dim, vtx_dim, embed_dim)
         self.Linear = nn.Linear(embed_dim, num_classes)
 
-        self.pair_embed = PairEmbed(pair_kin_dim, [3*self.num_head,]*2 + [self.num_head], for_onnx=for_inference)
+        self.pair_embed = PairEmbed(4, [3*num_head,]*2 + [num_head], for_onnx=for_inference)
         self.cls_norm = RMSNorm(embed_dim)
 
         self.EncoderLayer = HF_TransformerEncoderLayer(
@@ -716,7 +688,7 @@ class ParticleTransformer2(Classifier_base):
         )
         if self.num_enc_layers > 3:
             self.CLS_EncoderLayer2 = CLS_TransformerEncoderLayer(
-                d_model=embed_dim, nhead=num_head, dropout=0.1,  swiglu=swiglu,
+                d_model=embed_dim, nhead=num_head, dropout=0.1, swiglu=swiglu,
             )
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim), requires_grad=True)
@@ -724,30 +696,25 @@ class ParticleTransformer2(Classifier_base):
     
     def forward(self, inpt):
 
-        global_features, cpf_features, npf_features, vtx_features = inpt[0], inpt[1], inpt[2], inpt[3]      
+        global_features, cpf_features, npf_features, vtx_features = inpt[0], inpt[1], inpt[2], inpt[3]
         cpf, npf, vtx = cpf_features[:, :, :-4], npf_features[:, :, :-4], vtx_features[:, :, :-4]
         cpf_4v, npf_4v, vtx_4v = cpf_features[:, :, -4:], npf_features[:, :, -4:], vtx_features[:, :, -4:]
-        
+
         padding_mask = torch.cat((cpf_4v[:, :, :1], npf_4v[:, :, :1], vtx_4v[:, :, :1]), dim=1)
-        padding_mask = padding_mask[:, :, 0] == 0
-        pad = ((padding_mask.unsqueeze(dim=1) + padding_mask.unsqueeze(dim=2)))*1
-        
+        padding_mask = torch.eq(padding_mask[:, :, 0], 0.0)
+        pad = (padding_mask.unsqueeze(1) + padding_mask.unsqueeze(2)).to(cpf.dtype) * torch.finfo(self.dtype).min
+
         if self.build_4v:
             cpf_4v = build_E_p(cpf_4v)
             npf_4v = build_E_p(npf_4v)
             vtx_4v = build_E_p(vtx_4v)
 
-        cpf = cpf[:, :, : self.cpf_fts]
-        npf = npf[:, :, : self.npf_fts]
-        vtx = vtx[:, :, : self.vtx_fts]
-
-        nsv = vtx.shape[1]
         enc = self.InputProcess(cpf, npf, vtx)
 
         lorentz_vectors = torch.cat((cpf_4v, npf_4v, vtx_4v), dim=1)
         v = lorentz_vectors.transpose(1, 2)
-        attn_mask = self.pair_embed(v, nsv)
-        attn_mask = attn_mask + (pad*-1e9).unsqueeze(dim=1)
+        attn_mask = self.pair_embed(v)
+        attn_mask = attn_mask + pad.unsqueeze(dim=1)
 
         enc = self.Encoder(enc, attn_mask.reshape(-1, v.size(-1), v.size(-1)), padding_mask)
 
@@ -755,11 +722,10 @@ class ParticleTransformer2(Classifier_base):
         cls_tokens = self.CLS_EncoderLayer1(cls_tokens, enc, padding_mask)
         if self.num_enc_layers > 3:
             cls_tokens = self.CLS_EncoderLayer2(cls_tokens, enc, padding_mask)
-
-        x = self.cls_norm(torch.squeeze(cls_tokens, dim=1))
-
-        output = self.Linear(x)
-
+        
+        x = torch.squeeze(cls_tokens, dim=1)
+        
+        output = self.Linear(self.cls_norm(x))
         if self.for_inference:
             output = torch.softmax(output, dim=1)
 
