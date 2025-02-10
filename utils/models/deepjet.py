@@ -288,7 +288,7 @@ class DeepJet(Classifier, nn.Module):
                 truth,
             ) = attack(
                 [
-                    feature.float().to(device)
+                    feature.float().to(device, non_blocking=True)
                     for feature in [
                         global_features,
                         cpf_features,
@@ -296,7 +296,7 @@ class DeepJet(Classifier, nn.Module):
                         vtx_features,
                     ]
                 ],
-                truth.type(torch.LongTensor).to(device),
+                truth.type(torch.LongTensor).to(device, non_blocking=True),
                 self,
                 self.loss_fn,
             )
@@ -361,7 +361,7 @@ class DeepJet(Classifier, nn.Module):
                         truth,
                     ) = attack(
                         [
-                            feature.float().to(device)
+                            feature.float().to(device, non_blocking=True)
                             for feature in [
                                 global_features,
                                 cpf_features,
@@ -369,25 +369,18 @@ class DeepJet(Classifier, nn.Module):
                                 vtx_features,
                             ]
                         ],
-                        truth.type(torch.LongTensor).to(device),
+                        truth.type(torch.LongTensor).to(device, non_blocking=True),
                         self,
                         self.loss_fn,
                     )
 
                     pred = self.forward(
-                        *[
-                            feature.float().to(device)
-                            for feature in [
-                                global_features,
-                                cpf_features,
-                                npf_features,
-                                vtx_features,
-                            ]
-                        ]
+                        global_features,
+                        cpf_features,
+                        npf_features,
+                        vtx_features,
                     )
-                    loss = self.loss_fn(
-                        pred, truth.type(torch.LongTensor).to(device)
-                    ).mean()
+                    loss = self.loss_fn(pred, truth).mean()
 
                     if scaler != None:
                         optimizer.zero_grad(set_to_none=True)
@@ -402,12 +395,7 @@ class DeepJet(Classifier, nn.Module):
                         optimizer.step()
 
                     losses.append(loss.item())
-                    accuracy += (
-                        (pred.argmax(1) == truth.to(device))
-                        .type(torch.float)
-                        .sum()
-                        .item()
-                    )
+                    accuracy += (pred.argmax(1) == truth).type(torch.float).sum().item()
                     N += len(pred)
                     progress.update(
                         task, advance=1, description=f"Training...   | Loss: {loss:.2f}"
@@ -459,7 +447,7 @@ class DeepJet(Classifier, nn.Module):
                 with torch.no_grad():
                     pred = self.forward(
                         *[
-                            feature.float().to(device)
+                            feature.float().to(device, non_blocking=True)
                             for feature in [
                                 global_features,
                                 cpf_features,
@@ -469,16 +457,11 @@ class DeepJet(Classifier, nn.Module):
                         ]
                     )
                     loss = self.loss_fn(
-                        pred, truth.type(torch.LongTensor).to(device)
+                        pred, truth.type(torch.LongTensor).to(device, non_blocking=True)
                     ).mean()
                     losses.append(loss.item())
 
-                    accuracy += (
-                        (pred.argmax(1) == truth.to(device))
-                        .type(torch.float)
-                        .sum()
-                        .item()
-                    )
+                    accuracy += (pred.argmax(1) == truth).type(torch.float).sum().item()
                     predictions = np.append(predictions, pred.to("cpu").numpy(), axis=0)
                     truths = np.append(truths, truth.to("cpu").numpy(), axis=0)
                     processes = np.append(processes, process.to("cpu").numpy(), axis=0)

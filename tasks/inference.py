@@ -139,6 +139,7 @@ class InferenceTask(
             test_data,
             batch_size=self.batch_size,
             num_workers=self.n_threads,
+            pin_memory=True,
         )
 
         print("Start inference on", self.device)

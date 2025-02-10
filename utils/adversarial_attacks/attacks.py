@@ -45,7 +45,7 @@ class Attacks:
                             for key in self.input_keys[i]
                         ]
                     ).reshape(-1)
-                ).to(self.device)
+                ).to(self.device, non_blocking=True)
                 for i in range(len(self.input_keys))
             ]
         else:
@@ -55,8 +55,12 @@ class Attacks:
         self.iterations = iterations
         self.reduce = reduce
         self.restrict_impact = restrict_impact
-        self.integers = [integer.to(self.device) for integer in integer_positions]
-        self.defaults = [default.to(self.device) for default in default_values]
+        self.integers = [
+            integer.to(self.device, non_blocking=True) for integer in integer_positions
+        ]
+        self.defaults = [
+            default.to(self.device, non_blocking=True) for default in default_values
+        ]
         self.overshoot = torch.tensor(overshoot, device=self.device, pin_memory=True)
         self.uncertainty = torch.tensor(
             uncertainty, device=self.device, pin_memory=True
@@ -131,7 +135,10 @@ class Attacks:
             summation += torch.sum(
                 ((nominal - adversarial) / (scaler * uncertainty)) ** 2
             )
-        summation /= torch.tensor(model.feature_edges[-1]).to(self.device) * batch_size
+        summation /= (
+            torch.tensor(model.feature_edges[-1]).to(self.device, non_blocking=True)
+            * batch_size
+        )
         return summation
 
     def pgd(self, inputs, truth, model, criterion):
@@ -142,7 +149,10 @@ class Attacks:
         adversarial_inputs = []
         for input in inputs:
             adversarial_inputs.append(
-                input.detach().clone().to(self.device).requires_grad_(True)
+                input.detach()
+                .clone()
+                .to(self.device, non_blocking=True)
+                .requires_grad_(True)
             )
 
         for i in range(self.iterations):
@@ -193,7 +203,10 @@ class Attacks:
         r_tots = []
         for input in inputs:
             adversarial_inputs.append(
-                input.detach().clone().to(self.device).requires_grad_(True)
+                input.detach()
+                .clone()
+                .to(self.device, non_blocking=True)
+                .requires_grad_(True)
             )
             shape = input.shape
             ws.append(torch.zeros(shape, device=self.device))
@@ -330,7 +343,10 @@ class Attacks:
         adversarial_inputs = []
         for input in inputs:
             adversarial_inputs.append(
-                input.detach().clone().to(self.device).requires_grad_(True)
+                input.detach()
+                .clone()
+                .to(self.device, non_blocking=True)
+                .requires_grad_(True)
             )
 
         minimizer = torch.optim.Adam(params=adversarial_inputs, lr=self.epsilon)
