@@ -20,10 +20,10 @@ fi
 
 echo "begin teardown of old tests"
 echo "a" | law run ROCCurveTask --training-version $test_version --dataset-version $test_version --config hlt_run3 --model-name DeepJetHLT --epochs 1 --test-dataset-version $test_version --remove-output -1
-echo "a" | law run ROCCurveTask --training-version $test_version --dataset-version $test_version --config hlt_run3 --model-name DeepJetHLT --epochs 1 --test-dataset-version $test_version --test-attack pgd --test-attack-iterations 1 --remove-output -1
+echo "a" | law run ROCCurveTask --training-version $test_version --dataset-version $test_version --config hlt_run3 --model-name DeepJetHLT --epochs 1 --test-dataset-version $test_version --test-attack-magnitude 1.0 --test-attack pgd --remove-output -1
 #
-# creatte test filelist
+# create test filelist
 echo "$TESTDIRECTORY/data/hlt_test_TT.root" > $TESTDIRECTORY/data/hlt_test.txt
 law run DatasetConstructorTask --dataset-version $test_version --filelist $TESTDIRECTORY/data/hlt_test.txt --coffea-worker 4 --config hlt_run3 --chunk-size 1000
 law run ROCCurveTask --training-version $test_version --dataset-version $test_version --config hlt_run3 --model-name DeepJetHLT --epochs 1 --test-dataset-version $test_version
-law run ROCCurveTask --training-version $test_version --dataset-version $test_version --config hlt_run3 --model-name DeepJetHLT --epochs 1 --test-dataset-version $test_version --test-attack pgd --test-attack-iterations 1
+law run ROCCurveTask --training-version $test_version --dataset-version $test_version --config hlt_run3 --model-name DeepJetHLT --epochs 1 --test-dataset-version $test_version --test-attack-magnitude 1.0 --test-attack pgd

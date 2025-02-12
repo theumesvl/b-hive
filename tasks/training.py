@@ -26,9 +26,6 @@ def import_libraries():
 
     from utils.adversarial_attacks.pick_attack import pick_attack
     from utils.plotting.roc import plot_roc_list, plot_losses
-    from utils.optimizing.SchedulerLoader import SchedulerLoader
-    from utils.optimizing.OptimizerLoader import OptimizerLoader
-    from utils.torch.DatasetLoader import DatasetLoader
 
     return (
         DataLoader,
@@ -37,9 +34,6 @@ def import_libraries():
         pick_attack,
         plot_roc_list,
         plot_losses,
-        SchedulerLoader,
-        OptimizerLoader,
-        DatasetLoader,
     )
 
 
@@ -156,9 +150,6 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             pick_attack,
             plot_roc_list,
             plot_losses,
-            SchedulerLoader,
-            OptimizerLoader,
-            DatasetLoader,
         ) = import_libraries()
         self.set_device()
         # with memray.Tracker("/net/scratch_cms3a/uwillemsen/condor/b-hive/output/memory_screening/half_training_interactive_data_04_60GB.bin"): #full_training_data_04_cs50000/full_training_high_ram_01_v1_eps10.bin

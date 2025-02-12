@@ -21,9 +21,9 @@ if [ ! -f $TESTDIRECTORY/data/PAIReD_LL_CC_BB/paired_test.root ]; then
     scp -r $LXUSERNAME@lxplus.cern.ch:/eos/cms/store/group/phys_btag/b-hive/test_files/PAIReD_LL_CC_BB/paired_test.root $TESTDIRECTORY/data/PAIReD_LL_CC_BB/paired_test.root
 fi
 echo "begin teardown of old tests"
-echo "a" | law run ROCCurveTask --dataset-version $test_version --training-version $test_version --config PAIReD_ParT_cls --model-name PAIReDTagger --epochs 2 --batch-size 512 --attack pgd --attack-magnitude 0.02 --attack-iterations 2 --test-dataset-version $test_version --remove-output -1
+echo "a" | law run ROCCurveTask --dataset-version $test_version --training-version $test_version --config PAIReD_ParT_cls --model-name PAIReDTagger --epochs 1 --batch-size 512 --attack pgd --attack-magnitude 1.0 --test-dataset-version $test_version --remove-output -1
 #
 # create test filelist
 echo "$TESTDIRECTORY/data/PAIReD_LL_CC_BB/paired_test.root" > $TESTDIRECTORY/data/PAIReD_LL_CC_BB/filelist_paired.txt
 law run DatasetConstructorTask --dataset-version $test_version --filelist $TESTDIRECTORY/data/PAIReD_LL_CC_BB/filelist_paired.txt --coffea-worker 4 --config PAIReD_ParT_cls
-law run ROCCurveTask --dataset-version $test_version --training-version $test_version --config PAIReD_ParT_cls --model-name PAIReDTagger --epochs 2 --batch-size 512 --attack pgd --attack-magnitude 0.02 --attack-iterations 2 --test-dataset-version $test_version
+law run ROCCurveTask --dataset-version $test_version --training-version $test_version --config PAIReD_ParT_cls --model-name PAIReDTagger --epochs 1 --batch-size 512 --attack-magnitude 1.0 --attack pgd --test-dataset-version $test_version

@@ -461,7 +461,12 @@ class DeepJet(Classifier, nn.Module):
                     ).mean()
                     losses.append(loss.item())
 
-                    accuracy += (pred.argmax(1) == truth).type(torch.float).sum().item()
+                    accuracy += (
+                        (pred.argmax(1) == truth.to(device, non_blocking=True))
+                        .type(torch.float)
+                        .sum()
+                        .item()
+                    )
                     predictions = np.append(predictions, pred.to("cpu").numpy(), axis=0)
                     truths = np.append(truths, truth.to("cpu").numpy(), axis=0)
                     processes = np.append(processes, process.to("cpu").numpy(), axis=0)
