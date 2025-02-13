@@ -62,7 +62,7 @@ class DeepJetDataset(IterableDataset):
         # Multi-worker support: each worker gets a separate set of files
         # to iterate over to avoid double iterations
         worker_info = torch.utils.data.get_worker_info()
-        files_to_read = self.files
+        files_to_read = list(filter(None, self.files))
         if worker_info is not None:
             files_to_read = np.array_split(files_to_read, worker_info.num_workers)[
                 worker_info.id

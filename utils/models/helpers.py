@@ -1,16 +1,14 @@
-import numpy as np
 import torch
-import torch.nn as nn
 
 
-class InputConv(nn.Module):
+class InputConv(torch.nn.Module):
     def __init__(self, in_chn, out_chn, dropout_rate=0.1, **kwargs):
         super(InputConv, self).__init__(**kwargs)
 
         self.lin = torch.nn.Conv1d(in_chn, out_chn, kernel_size=1)
         self.bn = torch.nn.BatchNorm1d(out_chn, eps=0.001, momentum=0.6)
-        self.act = nn.ReLU()
-        self.dropout = nn.Dropout(dropout_rate)
+        self.act = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(dropout_rate)
 
     def forward(self, x, norm=True):
         if norm:
@@ -20,21 +18,21 @@ class InputConv(nn.Module):
         return x
 
 
-class LinLayer(nn.Module):
+class LinLayer(torch.nn.Module):
     def __init__(self, in_chn, out_chn, dropout_rate=0.1, **kwargs):
         super(LinLayer, self).__init__(**kwargs)
 
         self.lin = torch.nn.Linear(in_chn, out_chn)
         self.bn = torch.nn.BatchNorm1d(out_chn, eps=0.001, momentum=0.6)
-        self.act = nn.ReLU()
-        self.dropout = nn.Dropout(dropout_rate)
+        self.act = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(dropout_rate)
 
     def forward(self, x):
         x = self.dropout(self.bn(self.act(self.lin(x))))
         return x
 
 
-class InputProcess(nn.Module):
+class InputProcess(torch.nn.Module):
     def __init__(self, **kwargs):
         super(InputProcess, self).__init__(**kwargs)
 
@@ -79,7 +77,7 @@ class InputProcess(nn.Module):
         return cpf, npf, vtx
 
 
-class MoDInputProcess(nn.Module):
+class MoDInputProcess(torch.nn.Module):
     def __init__(self, **kwargs):
         super(MoDInputProcess, self).__init__(**kwargs)
 
@@ -124,7 +122,7 @@ class MoDInputProcess(nn.Module):
         return cpf, npf, vtx
 
 
-class DenseClassifier(nn.Module):
+class DenseClassifier(torch.nn.Module):
     def __init__(self, **kwargs):
         super(DenseClassifier, self).__init__(**kwargs)
 
@@ -150,7 +148,7 @@ class DenseClassifier(nn.Module):
         return x
 
 
-class MoDDenseClassifier(nn.Module):
+class MoDDenseClassifier(torch.nn.Module):
     def __init__(self, **kwargs):
         super(MoDDenseClassifier, self).__init__(**kwargs)
 

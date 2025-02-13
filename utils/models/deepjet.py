@@ -1,18 +1,4 @@
 import numpy as np
-import torch
-import torch.nn as nn
-
-from utils.models.abstract_base_models import Classifier
-from utils.torch import DeepJetDataset
-from utils.plotting.termplot import terminal_roc
-from utils.models.helpers import (
-    DenseClassifier,
-    MoDDenseClassifier,
-    InputProcess,
-    MoDInputProcess,
-)
-from scipy.special import softmax
-
 from rich.progress import (
     BarColumn,
     Progress,
@@ -22,9 +8,15 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 from scipy.special import softmax
-
+import torch
+from tqdm import tqdm
 from utils.models.abstract_base_models import Classifier
-from utils.models.helpers import DenseClassifier, InputProcess
+from utils.models.helpers import (
+    DenseClassifier,
+    InputProcess,
+    MoDDenseClassifier,
+    MoDInputProcess,
+)
 from utils.plotting.termplot import terminal_roc
 from utils.torch import DeepJetDataset
 
@@ -32,7 +24,7 @@ from utils.torch import DeepJetDataset
 torch.multiprocessing.set_sharing_strategy("file_system")
 
 
-class DeepJet(Classifier, nn.Module):
+class DeepJet(Classifier, torch.nn.Module):
     n_cpf = 25
     n_npf = 25
     n_vtx = 5
@@ -116,7 +108,7 @@ class DeepJet(Classifier, nn.Module):
 
         self.feature_edges = np.array(feature_edges)
 
-        self.loss_fn = nn.CrossEntropyLoss(reduction="none")
+        self.loss_fn = torch.nn.CrossEntropyLoss(reduction="none")
 
         self.InputProcess = InputProcess()
         self.DenseClassifier = DenseClassifier()
@@ -136,11 +128,11 @@ class DeepJet(Classifier, nn.Module):
         self.npf_bn = torch.nn.BatchNorm1d(50, eps=0.001, momentum=0.6)
         self.vtx_bn = torch.nn.BatchNorm1d(50, eps=0.001, momentum=0.6)
 
-        self.cpf_dropout = nn.Dropout(0.1)
-        self.npf_dropout = nn.Dropout(0.1)
-        self.vtx_dropout = nn.Dropout(0.1)
+        self.cpf_dropout = torch.nn.Dropout(0.1)
+        self.npf_dropout = torch.nn.Dropout(0.1)
+        self.vtx_dropout = torch.nn.Dropout(0.1)
 
-        self.Linear = nn.Linear(100, len(self.classes))
+        self.Linear = torch.nn.Linear(100, len(self.classes))
 
         self.glob_integers = torch.tensor([2, 3, 4, 5, 8, 13, 14])
         self.cpf_integers = torch.tensor([12, 13, 14, 15])
@@ -266,12 +258,6 @@ class DeepJet(Classifier, nn.Module):
         truths = []
         processes = []
         predictions = []
-
-        glob_list = []
-        cpf_list = []
-        npf_list = []
-        vtx_list = []
-
         for (
             global_features,
             cpf_features,
@@ -280,7 +266,7 @@ class DeepJet(Classifier, nn.Module):
             truth,
             weight,
             process,
-        ) in dataloader:
+        ) in tqdm(dataloader):
             # append jet_pt and jet_eta
             # this should be done differenlty in the future... avoid array slicing with magic numbers!
             torch.backends.cudnn.enabled = False
@@ -292,7 +278,7 @@ class DeepJet(Classifier, nn.Module):
                 truth,
             ) = attack(
                 [
-                    feature.float().to(device)
+                    feature.float().to(device, non_blocking=True)
                     for feature in [
                         global_features,
                         cpf_features,
@@ -300,7 +286,7 @@ class DeepJet(Classifier, nn.Module):
                         vtx_features,
                     ]
                 ],
-                truth.type(torch.LongTensor).to(device),
+                truth.type(torch.LongTensor).to(device, non_blocking=True),
                 self,
                 self.loss_fn,
             )
@@ -312,11 +298,6 @@ class DeepJet(Classifier, nn.Module):
             truths.append(truth.cpu().numpy().astype(int))
             processes.append(process.cpu().numpy())
             predictions.append(pred.cpu().numpy())
-
-            glob_list.append(global_features.cpu().numpy())
-            cpf_list.append(cpf_features.cpu().numpy())
-            npf_list.append(npf_features.cpu().numpy())
-            vtx_list.append(vtx_features.cpu().numpy())
 
         predictions = np.concatenate(predictions)
         kinematics = np.concatenate(kinematics)
@@ -370,7 +351,7 @@ class DeepJet(Classifier, nn.Module):
                         truth,
                     ) = attack(
                         [
-                            feature.float().to(device)
+                            feature.float().to(device, non_blocking=True)
                             for feature in [
                                 global_features,
                                 cpf_features,
@@ -378,25 +359,18 @@ class DeepJet(Classifier, nn.Module):
                                 vtx_features,
                             ]
                         ],
-                        truth.type(torch.LongTensor).to(device),
+                        truth.type(torch.LongTensor).to(device, non_blocking=True),
                         self,
                         self.loss_fn,
                     )
 
                     pred = self.forward(
-                        *[
-                            feature.float().to(device)
-                            for feature in [
-                                global_features,
-                                cpf_features,
-                                npf_features,
-                                vtx_features,
-                            ]
-                        ]
+                        global_features,
+                        cpf_features,
+                        npf_features,
+                        vtx_features,
                     )
-                    loss = self.loss_fn(
-                        pred, truth.type(torch.LongTensor).to(device)
-                    ).mean()
+                    loss = self.loss_fn(pred, truth).mean()
 
                     if scaler != None:
                         optimizer.zero_grad(set_to_none=True)
@@ -411,12 +385,7 @@ class DeepJet(Classifier, nn.Module):
                         optimizer.step()
 
                     losses.append(loss.item())
-                    accuracy += (
-                        (pred.argmax(1) == truth.to(device))
-                        .type(torch.float)
-                        .sum()
-                        .item()
-                    )
+                    accuracy += (pred.argmax(1) == truth).type(torch.float).sum().item()
                     N += len(pred)
                     progress.update(
                         task, advance=1, description=f"Training...   | Loss: {loss:.2f}"
@@ -468,7 +437,7 @@ class DeepJet(Classifier, nn.Module):
                 with torch.no_grad():
                     pred = self.forward(
                         *[
-                            feature.float().to(device)
+                            feature.float().to(device, non_blocking=True)
                             for feature in [
                                 global_features,
                                 cpf_features,
@@ -478,12 +447,12 @@ class DeepJet(Classifier, nn.Module):
                         ]
                     )
                     loss = self.loss_fn(
-                        pred, truth.type(torch.LongTensor).to(device)
+                        pred, truth.type(torch.LongTensor).to(device, non_blocking=True)
                     ).mean()
                     losses.append(loss.item())
 
                     accuracy += (
-                        (pred.argmax(1) == truth.to(device))
+                        (pred.argmax(1) == truth.to(device, non_blocking=True))
                         .type(torch.float)
                         .sum()
                         .item()
@@ -737,7 +706,7 @@ class MoDJet(DeepJet):
 
         self.feature_edges = np.array(feature_edges)
 
-        self.loss_fn = nn.CrossEntropyLoss(reduction="none")
+        self.loss_fn = torch.nn.CrossEntropyLoss(reduction="none")
 
         self.InputProcess = MoDInputProcess()
         self.DenseClassifier = MoDDenseClassifier()
@@ -757,11 +726,11 @@ class MoDJet(DeepJet):
         self.npf_bn = torch.nn.BatchNorm1d(50, eps=0.001, momentum=0.6)
         self.vtx_bn = torch.nn.BatchNorm1d(50, eps=0.001, momentum=0.6)
 
-        self.cpf_dropout = nn.Dropout(0.1)
-        self.npf_dropout = nn.Dropout(0.1)
-        self.vtx_dropout = nn.Dropout(0.1)
+        self.cpf_dropout = torch.nn.Dropout(0.1)
+        self.npf_dropout = torch.nn.Dropout(0.1)
+        self.vtx_dropout = torch.nn.Dropout(0.1)
 
-        self.Linear = nn.Linear(100, len(self.classes))
+        self.Linear = torch.nn.Linear(100, len(self.classes))
 
         self.glob_integers = torch.tensor([5, 6, 7, 8, 11, 16, 17])
         self.cpf_integers = torch.tensor([17, 18, 19, 20])

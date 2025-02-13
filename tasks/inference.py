@@ -16,15 +16,17 @@ from utils.plotting.termplot import terminal_roc
 
 import law
 
+
 def import_libraries():
     from torch.utils.data import DataLoader
     import torch
     import numpy as np
 
-    return DataLoader, torch, np 
+    return DataLoader, torch, np
 
 
 import warnings
+
 warnings.filterwarnings(
     "ignore",
     category=FutureWarning,
@@ -89,7 +91,7 @@ class InferenceTask(
 
         # Picking attack
         print(
-            rf"Will apply {self.test_attack} attack with epsilon={self.test_attack_magnitude} (individual attack magnitude: {self.test_attack_individual_factors}) and {self.test_attack_iterations} iterations."
+            rf"Applying {self.test_attack} attack (attack_magnitude={self.test_attack_magnitude}, n_iterations={self.test_attack_iterations}, attack_uncertainty={self.test_attack_uncertainty})."
         )
         epsilon_dir = (
             self.input()["test_dataset"]["file_list"].path.strip("processed_files.txt")
@@ -110,7 +112,10 @@ class InferenceTask(
             number_classes=len(model.classes),
             overshoot=self.test_attack_overshoot,
             epsilon_dir=epsilon_dir,
+            store_path=self.local_path(""),
+            uncertainty=self.test_attack_uncertainty,
         )
+        attack = torch.compile(attack, mode="max-autotune")
 
         print("Loading Dataset")
         files = self.input()["test_dataset"]["file_list"].load().split("\n")
@@ -134,6 +139,7 @@ class InferenceTask(
             test_data,
             batch_size=self.batch_size,
             num_workers=self.n_threads,
+            pin_memory=True,
         )
 
         print("Start inference on", self.device)
