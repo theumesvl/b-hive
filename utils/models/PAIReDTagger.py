@@ -812,7 +812,6 @@ class PAIReDTagger(torch.nn.Module):
 
     def __init__(
         self,
-        foo, # necessary to avoid error
         num_classes=3,
         num_enc=3,
         num_head=8,
@@ -848,11 +847,6 @@ class PAIReDTagger(torch.nn.Module):
         #self.Linear = torch.nn.Linear(
         #    self.embed_dim, 3
         #)
-        print("\n")
-        print("#"*40)
-        print("DEBUG")
-        print(self.embed_dim)
-        print(self.num_classes)
         self.Linear = torch.nn.Linear(self.embed_dim, self.num_classes)
 
         self.pair_embed = PairEmbed(

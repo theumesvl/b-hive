@@ -15,38 +15,38 @@ def BTaggingModels(model: str = "", *args, **kwargs):
         case ModelName.DeepJet:
             from utils.models.deepjet import DeepJet
 
-            return DeepJet(*args, **kwargs)
+            return DeepJet(**kwargs)
         case ModelName.DeepJetHLT:
             from utils.models.deepjet import DeepJetHLT
 
-            return DeepJetHLT(*args, **kwargs)
+            return DeepJetHLT(**kwargs)
         case ModelName.DeepJetTransformer:
             from utils.models.deepjettransformer import DeepJetTransformer
 
-            return DeepJetTransformer(*args, **kwargs)
+            return DeepJetTransformer(**kwargs)
         case ModelName.L1TKerasDeepSet:
             from utils.models.l1t_kerasDeepset import L1TKerasDeepSet
 
-            return L1TKerasDeepSet(*args, **kwargs)
+            return L1TKerasDeepSet(**kwargs)
         case ModelName.L1TTorchBase:
             from utils.models.l1t_base import L1TTorchBase
 
-            return L1TTorchBase(*args, **kwargs)
+            return L1TTorchBase(**kwargs)
         case ModelName.MoDJet:
             from utils.models.deepjet import MoDJet
 
-            return MoDJet(*args, **kwargs)
+            return MoDJet(**kwargs)
         case ModelName.PAIReDTagger:
             from utils.models.PAIReDTagger import PAIReDTagger
 
-            return PAIReDTagger(*args, **kwargs)
+            return PAIReDTagger(**kwargs)
         case ModelName.ParticleNet:
             from utils.models.particlenet_base import ParticleNetTagger
 
-            return ParticleNetTagger(*args, **kwargs)
+            return ParticleNetTagger(**kwargs)
         case ModelName.ParticleTransformer:
             from utils.models.particletransformer import ParticleTransformer
 
-            return ParticleTransformer(*args, **kwargs)
+            return ParticleTransformer(**kwargs)
         case _:
             raise NotImplementedError
