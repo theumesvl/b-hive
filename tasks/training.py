@@ -121,7 +121,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
                 if issubclass(
                     type(
                         BTaggingModels(
-                            self.model_name, ConfigLoader.load_config(self.config)
+                            self.model_name, ConfigLoader.load_config(self.config).get("model_arguments", {})
                         )
                     ),
                     Module,
@@ -133,7 +133,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
                 if issubclass(
                     type(
                         BTaggingModels(
-                            self.model_name, ConfigLoader.load_config(self.config)
+                            self.model_name, ConfigLoader.load_config(self.config).get("model_arguments", {})
                         )
                     ),
                     Module,
