@@ -702,9 +702,9 @@ class ParticleTransformerHLT(Classifier_base):
 
     # Define classes used by model and connect it to the config definitions
     classes = {
-        "b": ["label_b"],
-        "c": ["label_c"],
-        "uds": ["label_uds"],
+        "b": ["label_b", "label_gbb", "label_bb", "label_leptonicb", "label_leptonicbc"],
+        "c": ["label_c", "label_gcc", "label_cc"],
+        "uds": ["label_ud", "label_s"],
         "g": ["label_g"],
         "taup": ["label_taup"],
         "taum": ["label_taum"],

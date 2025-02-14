@@ -457,7 +457,7 @@ class Classifier_base(nn.Module):
             indices = [self.config.get(name_fts,[]).index(f) for f in model_features]
         else:
             indices = list(range(tensor.size(-1)))  # Default to all features if not specified
-        return tensor.index_select(dim=-1, index=torch.tensor(indices, device=tensor.device))
+        return tensor.index_select(dim=-1, index=torch.tensor(indices, device=tensor.device, dtype=torch.long))
 
     
     def get_inpt(self, x, truth=None, loss_fn=None, attack=None, device='cpu'):
