@@ -113,6 +113,7 @@ class Classifier_base(nn.Module):
         training_data,
         validation_data,
         directory,
+        loss_fn,
         attack=None,
         optimizer=None,
         scheduler=None,
@@ -123,7 +124,6 @@ class Classifier_base(nn.Module):
         resume_epochs=0,
         train_metrics=None,
         validation_metrics=None,
-        class_weights=None,
         terminal_plot=False,
         **kwargs,
     ):
@@ -131,7 +131,6 @@ class Classifier_base(nn.Module):
         if self.use_torch_compile:
             self.compile_step = torch.compile(self.step, mode='max-autotune')
             
-        loss_fn = nn.CrossEntropyLoss(weight=class_weights, reduction="none")
         scaler = torch.amp.GradScaler(device)
         
         if os.path.isfile(f'{directory}/train_time.npy') and os.path.isfile(f'{directory}/val_time.npy'):
@@ -207,6 +206,8 @@ class Classifier_base(nn.Module):
     def predict_model(
         self, 
         dataloader, 
+        output,
+        loss_fn,
         device, 
         attack=None
     ):
@@ -274,20 +275,21 @@ class Classifier_base(nn.Module):
         kinematics = np.concatenate(kinematics)
         truths = np.concatenate(truths)
         processes = np.concatenate(processes)
+
+        np.save(output["prediction"].path, predictions)
+        np.save(output["truth"].path, truths)
+        np.save(output["kinematics"].path, kinematics)
+        np.save(output["process"].path, processes)
+        np.save(output["inference_time"].path, elapsed_column.elapsed_time)
         
         return predictions, truths, kinematics, processes, elapsed_column.elapsed_time
     
     #@torch.compile(mode='max-autotune')
-    def step(self, inpt, truth, loss_fn, device="cpu", mixed_precision=True):
+    def step(self, inpt, truth, loss_fn, attack=None, device="cpu", mixed_precision=True):
         
-        if mixed_precision:
-            with torch.autocast(device):
-                pred = self.forward(inpt)
-                loss = loss_fn(pred, truth).mean()
-        else:
+        with torch.autocast(device, enabled=mixed_precision):
             pred = self.forward(inpt)
             loss = loss_fn(pred, truth).mean()
-            
         return pred, loss
     
     def update(
@@ -314,7 +316,7 @@ class Classifier_base(nn.Module):
             BarColumn(bar_width=None),
             TaskProgressColumn(),
             TimeRemainingColumn(),
-            TextColumn("0/? its"),
+            TextColumn(f"0/~{dataloader.nits_expected} its"),
             expand=True,
         ) as progress:
             N = 0
@@ -333,6 +335,10 @@ class Classifier_base(nn.Module):
                 else:
                     pred, loss = self.step(inpt, truth, loss_fn, device=device, mixed_precision=self.mixed_precision)
 
+                if verbose:
+                    if torch.isnan(loss).any():
+                        raise ValueError("Loss contains NaN values! Something's wrong with calculation, please check.")
+        
                 optimizer.zero_grad(set_to_none=True)
                 
                 if self.mixed_precision:
@@ -407,7 +413,11 @@ class Classifier_base(nn.Module):
                         pred, loss = self.compile_step(inpt, truth, loss_fn, device=device, mixed_precision=self.mixed_precision)
                     else:
                         pred, loss = self.step(inpt, truth, loss_fn, device=device, mixed_precision=self.mixed_precision)
-                        
+
+                    if verbose:
+                        if torch.isnan(loss).any():
+                            raise ValueError("Loss contains NaN values! Something's wrong with calculation, please check.")
+
                     losses += loss.item()
 
                     accuracy += (

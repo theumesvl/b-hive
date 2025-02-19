@@ -70,7 +70,7 @@ class LZ4Dataset(IterableDataset):
             #Add LZ4 loading
             with lz4.frame.open(file, mode='r') as data:
                 output_data = data.read()
-            s = np.frombuffer(output_data, dtype='float32')
+            s = np.frombuffer(output_data, dtype='float32').copy()
             s = s[2:].reshape(-1, int(s[1]), order="C")
 
             if self.weighted_sampling:

@@ -14,8 +14,10 @@ from utils.config.config_loader import ConfigLoader
 from utils.models.models import BTaggingModels
 from utils.plotting.termplot import terminal_roc
 from utils.torch.DatasetLoader import DatasetLoader
-import lz4.frame
+from utils.loss.LossFunctionLoader import LossFunctionLoader
 
+import os
+import lz4.frame
 import law
 
 def import_libraries():
@@ -58,7 +60,6 @@ class InferenceTask(
 
     def output(self):
         return {
-            # # "output_root": self.local_target("output.root"),
             "prediction": self.local_target("prediction.npy"),
             "process": self.local_target("process.npy"),
             "truth": self.local_target("truth.npy"),
@@ -124,6 +125,10 @@ class InferenceTask(
         print("Loading Dataset")
         files = self.input()["test_dataset"]["file_list"].load().split("\n")
 
+        # protection if the last line in processed_files.txt is empty
+        if not os.path.exists(files[-1]):
+            files = files[:-1]
+
         print("Initialize datasets")
         datasetClass = DatasetLoader(config["dataset"])
         weights_file = (
@@ -157,17 +162,12 @@ class InferenceTask(
         )
         test_dataloader.nits_expected = expected_test_number_of_batches
 
+        loss_function = LossFunctionLoader(self.loss_function)
+        
         print("Start inference on", self.device)
         predictions, truths, kinematics, processes, inference_time = model.predict_model(
-            test_dataloader, self.device, attack=attack
+            test_dataloader, self.output(), loss_function, self.device, attack=attack
         )
-
-        # np.save(self.output()["kinematics"].path, kinematics)
-        np.save(self.output()["prediction"].path, predictions)
-        np.save(self.output()["truth"].path, truths)
-        np.save(self.output()["kinematics"].path, kinematics)
-        np.save(self.output()["process"].path, processes)
-        np.save(self.output()["inference_time"].path, inference_time)
         
         if(self.terminal_plot):
             terminal_roc(predictions, truths, title="Inference ROC")

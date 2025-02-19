@@ -59,6 +59,10 @@ global_features:
 - "jet_elf"
 - "jet_muf"
 - "jet_ncand"
+- "jet_genmatch_lep_vis_pt"
+- "jet_genmatch_lep_pt"
+- "jet_genmatch_wnu_pt"
+- "jet_genmatch_pt"
 cpf_candidates:
 - "jet_pfcand_deta"
 - "jet_pfcand_dphi"

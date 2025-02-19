@@ -728,6 +728,12 @@ class ParticleTransformerHLT(Classifier_base):
         npf = npf.reshape(npf.shape[0], self.input_dims[2][0], 0)
         vtx = vtx.reshape(vtx.shape[0], self.input_dims[3][0], -1)
 
+        # Subselect features
+        glob = self._subselect_features(glob, "global_features")
+        cpf = self._subselect_features(cpf, "cpf_candidates")
+        npf = self._subselect_features(npf, "npf_candidates")
+        vtx = self._subselect_features(vtx, "vtx_features")
+
         if attack is not None:
             (
                 glob,
@@ -799,7 +805,7 @@ class ParticleTransformerHLT(Classifier_base):
     
     def forward(self, inpt):
 
-        global_features, cpf_features, _, vtx_features = inpt[0], inpt[1], inpt[2], inpt[3]
+        _, cpf_features, _, vtx_features = inpt[0], inpt[1], inpt[2], inpt[3]
         cpf, vtx = cpf_features, vtx_features
         cpf, vtx = cpf_features[:, :, :-4], vtx_features[:, :, :-4]
         cpf_4v, vtx_4v = cpf_features[:, :, -4:], vtx_features[:, :, -4:]
@@ -897,6 +903,13 @@ class ParticleTransformerHLT(Classifier_base):
 
 class GlobalParticleTransformerHLT(ParticleTransformerHLT):
 
+    global_features = [
+        "jet_pt",
+        "jet_eta",
+        "jet_phi",
+        "jet_energy"
+    ]
+    
     def __init__(
         self,
         config,

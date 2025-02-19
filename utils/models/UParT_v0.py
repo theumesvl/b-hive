@@ -6,7 +6,6 @@ from functools import partial
 from typing import List
 from utils.models.base_model import Classifier_base, CustomTimeElapsedColumn
 from utils.plotting.termplot import terminal_roc
-from utils.loss.CrossEntropyLogCosh import CrossEntropyLogCosh
 
 from rich.progress import (
     BarColumn,
@@ -22,6 +21,7 @@ import torch
 import os
 import torch.nn as nn
 from torch.optim import Optimizer
+from pathlib import Path
 
 from scipy.special import softmax
 
@@ -615,12 +615,16 @@ class UParT_v0(Classifier_base):
         build_4v=True,
         **kwargs
     ):
-        super(UParT_v0, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self.config = config
         self.for_inference = for_inference
         self.build_4v = build_4v
         self.num_enc_layers = num_enc
+
+        self.jet_pt_index = config.get('global_features',[]).index('jet_pt')
+        self.gen_pt_WithNu_index = config.get('global_features',[]).index('gen_pt_WithNu')
+        self.gen_pt = config.get('global_features',[]).index('gen_pt')
 
         _, cpf_dim, npf_dim, vtx_dim = self.all_model_features_length() 
 
@@ -654,7 +658,7 @@ class UParT_v0(Classifier_base):
 
     def forward(self, inpt):
 
-        global_features, cpf_features, npf_features, vtx_features = inpt[0], inpt[1], inpt[2], inpt[3]
+        _, cpf_features, npf_features, vtx_features = inpt[0], inpt[1], inpt[2], inpt[3]
 
         cpf, npf, vtx = cpf_features[:, :, :-4], npf_features[:, :, :-4], vtx_features[:, :, :-4]
         cpf_4v, npf_4v, vtx_4v = cpf_features[:, :, -4:], npf_features[:, :, -4:], vtx_features[:, :, -4:]
@@ -692,180 +696,12 @@ class UParT_v0(Classifier_base):
 
         return output1, output2
 
-    def step(self, x, truth, loss_fn, attack=None, device="cpu", mixed_precision=True):
-
-        inpt, truth = self.get_inpt(x, truth=truth, loss_fn=loss_fn, attack=attack, device=device)
-        
-        jet_pt        = inpt[0][:,  0]
-        gen_pt_WithNu = inpt[0][:, -2]
-        gen_pt        = inpt[0][:, -1]
-
-        target_pt_WithNu = torch.clip(torch.nan_to_num(gen_pt_WithNu / jet_pt, nan=0, posinf=0, neginf=0), min=0.3, max=2.0).reshape(-1)
-        target_pt        = torch.clip(torch.nan_to_num(gen_pt        / jet_pt, nan=0, posinf=0, neginf=0), min=0.3, max=2.0).reshape(-1, 1)
-        
-        if mixed_precision:
-            with torch.cuda.amp.autocast():
-                pred_cat, pred_reg = self.forward(inpt)
-                loss, loss_cat, loss_reg = loss_fn(pred_cat, truth, pred_reg[:,:-1], target_pt, pred_reg[:,-1], target_pt_WithNu, device)
-        else:
-            pred_cat, pred_reg = self.forward(inpt)
-            loss, loss_cat, loss_reg = loss_fn(pred_cat, truth, pred_reg[:,:-1], target_pt, pred_reg[:,-1], target_pt_WithNu, device)
-            
-        return pred_cat, loss
-
-    def update(
-        self,
-        dataloader,
-        loss_fn,
-        optimizer,
-        scheduler=None,
-        batch_lr=False,
-        attack=None,
-        scaler=None,
-        device="cpu",
-        verbose=True,
-    ):
-        losses = []
-        accuracy = 0.0
-        self.train()
-
-        elapsed_column = CustomTimeElapsedColumn()
-
-        with Progress(
-            TextColumn("{task.description}"),
-            elapsed_column,
-            BarColumn(bar_width=None),
-            TaskProgressColumn(),
-            TimeRemainingColumn(),
-            TextColumn("0/? its"),
-            expand=True,
-        ) as progress:
-            N = 1
-            task = progress.add_task("Training...", total=dataloader.nits_expected)
-            print("entering traing loop")
-            for (x, truth, w, p) in dataloader:
-
-                x = x.float().to(device)
-                truth = truth.type(torch.LongTensor).to(device)
-                w = w.float().to(device)
-
-                if self.use_torch_compile:
-                    pred, loss = self.compile_step(x, truth, loss_fn, attack=attack, device=device, mixed_precision=self.mixed_precision)
-                else:
-                    pred, loss = self.step(x, truth, loss_fn, attack=attack, device=device, mixed_precision=self.mixed_precision)
-
-                if scaler != None:
-                    optimizer.zero_grad(set_to_none=True)
-                    scaler.scale(loss).backward()
-                    scaler.unscale_(optimizer)
-                    torch.nn.utils.clip_grad_norm_(self.parameters(), 1.0)
-                    scaler.step(optimizer)
-                    scaler.update()
-                else:
-                    optimizer.zero_grad(set_to_none=True)
-                    loss.backward()
-                    optimizer.step()
-
-                if batch_lr and (scheduler is not None):
-                    scheduler.step()
-                
-                losses.append(loss.item())
-                accuracy += (
-                    (pred.argmax(1) == truth.to(device)).type(torch.float).sum().item()
-                )
-
-                N += len(pred)
-                curr_lr = optimizer.param_groups[0]['lr']
-                progress.update(
-                    task, advance=1, description=f"Training...   | Loss: {loss:.4f}, lr: {curr_lr:.5f}"
-                )
-                progress.columns[-1].text_format = "{}/{} its".format(
-                    N // dataloader.dataset.batch_size,
-                    (
-                        "?"
-                        if dataloader.nits_expected == len(dataloader)
-                        else f"~{dataloader.nits_expected}"
-                    ),
-                )
-            progress.update(task, completed=dataloader.nits_expected)
-        dataloader.nits_expected = N // dataloader.dataset.batch_size
-        accuracy /= N
-        print("  ", f"Average loss: {np.array(losses).mean():.4f}")
-        print("  ", f"Average accuracy: {float(100*accuracy):.4f}")
-
-        return np.array(losses).mean(), float(accuracy), elapsed_column.elapsed_time
-        
-    def validate_model(self, dataloader, loss_fn, device="cpu", verbose=True, terminal_plot=False):
-        losses = 0.0
-        accuracy = 0.0
-        self.eval()
-
-        predictions = np.empty((0, len(self.classes)))
-        truths = np.empty((0))
-        processes = np.empty((0))
-
-        elapsed_column = CustomTimeElapsedColumn()
-
-        with Progress(
-            TextColumn("{task.description}"),
-            elapsed_column,
-            BarColumn(bar_width=None),
-            TaskProgressColumn(),
-            TimeRemainingColumn(),
-            TextColumn("0/? its"),
-            expand=True,
-        ) as progress:
-            N = 1
-            task = progress.add_task("Validation...", total=dataloader.nits_expected)
-            for b, (x, truth, w, process) in enumerate(dataloader):
-                
-                x = x.float().to(device, non_blocking=True)
-                truth = truth.type(torch.LongTensor).to(device, non_blocking=True)
-                w = w.float().to(device, non_blocking=True)
-
-                with torch.no_grad():
-                    if self.use_torch_compile:
-                        pred, loss = self.compile_step(x, truth, loss_fn, device=device, mixed_precision=self.mixed_precision)
-                    else:
-                        pred, loss = self.step(x, truth, loss_fn, device=device, mixed_precision=self.mixed_precision)
-                        
-                    losses += loss.item()
-
-                    accuracy += (
-                        (pred.argmax(1) == truth.to(device))
-                        .type(torch.float)
-                        .sum()
-                        .item()
-                    )
-                    if(terminal_plot):
-                        predictions = np.append(predictions, pred.to("cpu").numpy(), axis=0)
-                        truths = np.append(truths, truth.to("cpu").numpy(), axis=0)
-                        processes = np.append(processes, process.to("cpu").numpy(), axis=0)
-                    
-                N += len(pred)
-                progress.update(
-                    task, advance=1, description=f"Validation... | Loss: {loss:.2f}"
-                )
-                progress.columns[-1].text_format = "{}/{} its".format(
-                    N // dataloader.dataset.batch_size, f"~{dataloader.nits_expected}"
-                )
-            progress.update(task, completed=dataloader.nits_expected)
-        dataloader.nits_expected = N // dataloader.dataset.batch_size
-        accuracy /= N
-        print("  ", f"Validation loss: {losses/(b+1):.4f}")
-        print("  ", f"Validation accuracy: {float(100*accuracy):.4f}")
-
-        if verbose and terminal_plot:
-            print("Printing terminal ROC")
-            terminal_roc(predictions, truths, title="Validation ROC")
-
-        return losses/(b+1), float(accuracy), elapsed_column.elapsed_time
-         
     def train_model(
         self,
         training_data,
         validation_data,
         directory,
+        loss_fn,
         attack=None,
         optimizer=None,
         scheduler=None,
@@ -876,14 +712,26 @@ class UParT_v0(Classifier_base):
         resume_epochs=0,
         train_metrics=None,
         validation_metrics=None,
+        terminal_plot=False,
         **kwargs,
     ):
+        
         if self.use_torch_compile:
             self.compile_step = torch.compile(self.step, mode='max-autotune')
-        
-        loss_fn = CrossEntropyLogCosh(reduction="mean", quantiles = [-1, 0.16, 0.84])
+            
         scaler = torch.amp.GradScaler(device)
 
+        if os.path.isfile(f'{directory}/training_metrics.npy'): 
+            train_metrics_file = np.load(f'{directory}/training_metrics.npy')
+            validation_metrics_file = np.load(f'{directory}/validation_metrics.npy')
+            train_metrics["loss_cat"] = list(train_metrics_file["loss_cat"])
+            train_metrics["loss_reg"] = list(train_metrics_file["loss_reg"])
+            validation_metrics["loss_cat"] = list(validation_metrics_file["loss_cat"])
+            validation_metrics["loss_reg"] = list(validation_metrics_file["loss_reg"])
+        else:  
+            train_metrics["loss_cat"], train_metrics["loss_reg"] = [], []
+            validation_metrics["loss_cat"], validation_metrics["loss_reg"] = [], []
+        
         if os.path.isfile(f'{directory}/train_time.npy') and os.path.isfile(f'{directory}/val_time.npy'):
             train_time = np.load(f'{directory}/train_time.npy')
             val_time   = np.load(f'{directory}/val_time.npy')
@@ -893,7 +741,8 @@ class UParT_v0(Classifier_base):
         for t in range(resume_epochs, nepochs):
             print("Epoch", t + 1, "of", nepochs)
             training_data.dataset.shuffleFileList()  # Shuffle the file list as mini-batch training requires it for regularisation of a non-convex problem
-            loss_training, acc_training, train_time[t] = self.update(
+            
+            loss_training, loss_cat, loss_reg, acc_training, train_time[t] = self.update(
                 training_data,
                 loss_fn,
                 optimizer,
@@ -904,14 +753,18 @@ class UParT_v0(Classifier_base):
                 device=device,
             )
             train_metrics["loss"].append(loss_training)
+            train_metrics["loss_cat"].append(loss_cat)
+            train_metrics["loss_reg"].append(loss_reg)
             train_metrics["acc"].append(acc_training)
 
             if (not batch_lr) and (scheduler is not None):
                 scheduler.step()
 
-            loss_validation, acc_validation, val_time[t] = self.validate_model(validation_data, loss_fn, device)
+            loss_validation, loss_cat, loss_reg, acc_validation, val_time[t] = self.validate_model(validation_data, loss_fn, device,terminal_plot=terminal_plot)  
             
             validation_metrics["loss"].append(loss_validation)
+            validation_metrics["loss_cat"].append(loss_validation)
+            validation_metrics["loss_reg"].append(loss_validation)
             validation_metrics["acc"].append(acc_validation)
 
             # Save the model state and other details
@@ -941,26 +794,240 @@ class UParT_v0(Classifier_base):
             np.savez(
                 f'{directory}/training_metrics',
                 loss=train_metrics["loss"],
+                loss_cat=train_metrics["loss_cat"],
+                loss_reg=train_metrics["loss_reg"],
                 acc=train_metrics["acc"],
                 allow_pickle=True,
             )
             np.savez(
                 f'{directory}/validation_metrics',
                 loss=validation_metrics["loss"],
+                loss_cat=validation_metrics["loss_cat"],
+                loss_reg=validation_metrics["loss_reg"],
                 acc=validation_metrics["acc"],
                 allow_pickle=True,
             )
         
         return train_metrics, validation_metrics
+        
+    def step(self, inpt, truth, loss_fn, target_pt, target_pt_WithNu, attack=None, device="cpu", mixed_precision=True):
+        
+        with torch.autocast(device, enabled=mixed_precision):
+            pred_cat, pred_reg = self.forward(inpt)
+            loss, loss_cat, loss_reg = loss_fn(pred_cat, truth, pred_reg[:,:-1], target_pt, pred_reg[:,-1], target_pt_WithNu, device)  
+        return pred_cat, loss, loss_cat, loss_reg
 
-    def predict_model(self, dataloader, device, attack=None):
+    def update(
+        self,
+        dataloader,
+        loss_fn,
+        optimizer,
+        scheduler=None,
+        batch_lr=False,
+        attack=None,
+        scaler=None,
+        device="cpu",
+        verbose=True,
+    ):
+        losses, losses_cat, losses_reg = 0.0, 0.0, 0.0
+        accuracy = 0.0
+        self.train()
+
+        elapsed_column = CustomTimeElapsedColumn()
+
+        with Progress(
+            TextColumn("{task.description}"),
+            elapsed_column,
+            BarColumn(bar_width=None),
+            TaskProgressColumn(),
+            TimeRemainingColumn(),
+            TextColumn(f"0/~{dataloader.nits_expected} its"),
+            expand=True,
+        ) as progress:
+            N = 0
+            task = progress.add_task("Training...", total=dataloader.nits_expected)
+            print("entering traing loop")
+            
+            for b, (x, truth, w, process) in enumerate(dataloader):
+
+                x = x.float().to(device, non_blocking=True)
+                truth = truth.type(torch.LongTensor).to(device, non_blocking=True)
+                w = w.float().to(device, non_blocking=True)
+
+                inpt, truth = self.get_inpt(x, truth=truth, loss_fn=loss_fn, attack=attack, device=device)
+
+                jet_pt        = inpt[0][:, self.jet_pt_index]
+                gen_pt_WithNu = inpt[0][:, self.gen_pt_WithNu_index]
+                gen_pt        = inpt[0][:, self.gen_pt]
+        
+                target_pt_WithNu = torch.clip(torch.nan_to_num(gen_pt_WithNu / jet_pt, nan=0, posinf=0, neginf=0), min=0.3, max=2.0).reshape(-1)
+                target_pt        = torch.clip(torch.nan_to_num(gen_pt        / jet_pt, nan=0, posinf=0, neginf=0), min=0.3, max=2.0).reshape(-1, 1)
+                
+                if self.use_torch_compile:
+                    pred, loss, loss_cat, loss_reg = self.compile_step(
+                        inpt, truth, loss_fn, 
+                        target_pt=target_pt, target_pt_WithNu=target_pt_WithNu, 
+                        device=device, mixed_precision=self.mixed_precision
+                    )
+                else:
+                    pred, loss, loss_cat, loss_reg = self.step(
+                        inpt, truth, loss_fn, 
+                        target_pt=target_pt, target_pt_WithNu=target_pt_WithNu, 
+                        device=device, mixed_precision=self.mixed_precision
+                    )
+
+                if torch.isnan(loss).any():
+                    raise ValueError("Loss contains NaN values! Something's wrong with calculation, please check.")
+        
+                optimizer.zero_grad(set_to_none=True)
+                
+                if scaler is not None:
+                    # Mixed-precision training
+                    scaler.scale(loss).backward()
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(self.parameters(), 1.0)
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    # Standard precision training
+                    loss.backward()
+                    optimizer.step()
+                    
+                # Step the learning rate scheduler if applicable
+                if batch_lr and (scheduler is not None):
+                    scheduler.step()
+      
+                losses += loss.item()
+                losses_cat += loss_cat.item()
+                losses_reg += loss_reg.item()
+                accuracy += (
+                    (pred.argmax(1) == truth.to(device))
+                    .type(torch.float)
+                    .sum()
+                    .item()
+                )
+                N += len(pred)
+                curr_lr = optimizer.param_groups[0]['lr']
+                progress.update(
+                    task, advance=1, description=f"Training...   | Loss: {loss:.4f}, lr: {curr_lr:.5f}"
+                )
+                progress.columns[-1].text_format = "{}/{} its".format(
+                    N // dataloader.dataset.batch_size, f"~{dataloader.nits_expected}"
+                )
+            progress.update(task, completed=dataloader.nits_expected)
+        accuracy /= N
+        print("  ", f"Average loss: {losses/(b+1):.4f}")
+        print("  ", f"Average loss (cat): {losses_cat/(b+1):.4f}")
+        print("  ", f"Average loss (reg): {losses_reg/(b+1):.4f}")
+        print("  ", f"Average accuracy: {float(100*accuracy):.4f}")
+
+        return losses/(b+1), losses_cat/(b+1), losses_reg/(b+1), float(accuracy), elapsed_column.elapsed_time
+
+    def validate_model(self, dataloader, loss_fn, device="cpu", verbose=True, terminal_plot=False):
+        losses, losses_cat, losses_reg = 0.0, 0.0, 0.0
+        accuracy = 0.0
         self.eval()
-        loss_fn = CrossEntropyLogCosh(reduction="mean", quantiles = [-1, 0.16, 0.84])
+
+        predictions = np.empty((0, len(self.classes)))
+        truths = np.empty((0))
+        processes = np.empty((0))
+
+        elapsed_column = CustomTimeElapsedColumn()
+
+        with Progress(
+            TextColumn("{task.description}"),
+            elapsed_column,
+            BarColumn(bar_width=None),
+            TaskProgressColumn(),
+            TimeRemainingColumn(),
+            TextColumn(f"0/~{dataloader.nits_expected} its"),
+            expand=True,
+        ) as progress:
+            N = 1
+            task = progress.add_task("Validation...", total=dataloader.nits_expected)
+            
+            for b, (x, truth, w, process) in enumerate(dataloader):
+                
+                x = x.float().to(device, non_blocking=True)
+                truth = truth.type(torch.LongTensor).to(device, non_blocking=True)
+                w = w.float().to(device, non_blocking=True)
+
+                with torch.no_grad():
+                    inpt, truth = self.get_inpt(x, truth=truth, loss_fn=loss_fn, attack=None, device=device)
+
+                    jet_pt        = inpt[0][:, self.jet_pt_index]
+                    gen_pt_WithNu = inpt[0][:, self.gen_pt_WithNu_index]
+                    gen_pt        = inpt[0][:, self.gen_pt]
+            
+                    target_pt_WithNu = torch.clip(torch.nan_to_num(gen_pt_WithNu / jet_pt, nan=0, posinf=0, neginf=0), min=0.3, max=2.0).reshape(-1)
+                    target_pt        = torch.clip(torch.nan_to_num(gen_pt        / jet_pt, nan=0, posinf=0, neginf=0), min=0.3, max=2.0).reshape(-1, 1)
+                    
+                    if self.use_torch_compile:
+                        pred, loss, loss_cat, loss_reg = self.compile_step(
+                            inpt, truth, loss_fn, 
+                            target_pt=target_pt, target_pt_WithNu=target_pt_WithNu, 
+                            device=device, mixed_precision=self.mixed_precision
+                        )
+                    else:
+                        pred, loss, loss_cat, loss_reg = self.step(
+                            inpt, truth, loss_fn, 
+                            target_pt=target_pt, target_pt_WithNu=target_pt_WithNu, 
+                            device=device, mixed_precision=self.mixed_precision
+                        )
+                        
+                    losses += loss.item()
+                    losses_cat += loss_cat.item()
+                    losses_reg += loss_reg.item()
+
+                    accuracy += (
+                        (pred.argmax(1) == truth.to(device))
+                        .type(torch.float)
+                        .sum()
+                        .item()
+                    )
+                    if(terminal_plot):
+                        predictions = np.append(predictions, pred.to("cpu").numpy(), axis=0)
+                        truths = np.append(truths, truth.to("cpu").numpy(), axis=0)
+                        processes = np.append(processes, process.to("cpu").numpy(), axis=0)
+                    
+                N += len(pred)
+                progress.update(
+                    task, advance=1, description=f"Validation... | Loss: {loss:.2f}"
+                )
+                progress.columns[-1].text_format = "{}/{} its".format(
+                    N // dataloader.dataset.batch_size, f"~{dataloader.nits_expected}"
+                )
+            progress.update(task, completed=dataloader.nits_expected)
+        dataloader.nits_expected = N // dataloader.dataset.batch_size
+        accuracy /= N
+        print("  ", f"Validation loss: {losses/(b+1):.4f}")
+        print("  ", f"Validation loss (cat): {losses_cat/(b+1):.4f}")
+        print("  ", f"Validation loss (reg): {losses_reg/(b+1):.4f}")
+        print("  ", f"Validation accuracy: {float(100*accuracy):.4f}")
+
+        if verbose and terminal_plot:
+            print("Printing terminal ROC")
+            terminal_roc(predictions, truths, title="Validation ROC")
+
+        return losses/(b+1), losses_cat/(b+1), losses_reg/(b+1), float(accuracy), elapsed_column.elapsed_time
+           
+    def predict_model(
+        self, 
+        dataloader, 
+        output,
+        loss_fn,
+        device, 
+        attack=None
+    ):
+        losses, losses_cat, losses_reg = 0.0, 0.0, 0.0
+        accuracy = 0.0
+        self.eval()
         
         kinematics = []
         truths = []
         processes = []
         predictions = []
+        predictions_reg = []
 
         elapsed_column = CustomTimeElapsedColumn()
         
@@ -970,23 +1037,25 @@ class UParT_v0(Classifier_base):
             BarColumn(bar_width=None),
             TaskProgressColumn(),
             TimeRemainingColumn(),
-            TextColumn("0/? its"),
+            TextColumn(f"0/{dataloader.nits_expected} its"),
             expand=True,
         ) as progress:
             N = 1
             task = progress.add_task("Inference...", total=dataloader.nits_expected)
             
-            for (x, truth, w, process) in dataloader:
+            for b, (x, truth, w, process) in enumerate(dataloader):
 
-                x = x.float().to(device)
-                truth = truth.type(torch.LongTensor).to(device)
-                w = w.float().to(device)
+                x = x.float().to(device, non_blocking=True)
+                truth = truth.type(torch.LongTensor).to(device, non_blocking=True)
+                w = w.float().to(device, non_blocking=True)
 
+                torch.backends.cudnn.enabled = False
                 inpt, _ = self.get_inpt(x, truth=truth, loss_fn=loss_fn, attack=attack, device=device)
+                torch.backends.cudnn.enabled = True
 
-                jet_pt        = inpt[0][:,  0]
-                gen_pt_WithNu = inpt[0][:, -2]
-                gen_pt        = inpt[0][:, -1]
+                jet_pt        = inpt[0][:, self.jet_pt_index]
+                gen_pt_WithNu = inpt[0][:, self.gen_pt_WithNu_index]
+                gen_pt        = inpt[0][:, self.gen_pt]
 
                 target_pt_WithNu = torch.clip(torch.nan_to_num(gen_pt_WithNu / jet_pt, nan=0, posinf=0, neginf=0), min=0.3, max=2.0).reshape(-1)
                 target_pt        = torch.clip(torch.nan_to_num(gen_pt        / jet_pt, nan=0, posinf=0, neginf=0), min=0.3, max=2.0).reshape(-1, 1)
@@ -999,7 +1068,17 @@ class UParT_v0(Classifier_base):
                 truths.append(truth.cpu().numpy().astype(int))
                 processes.append(process.cpu().numpy())
                 predictions.append(pred_cat.cpu().numpy())
-                
+                predictions_reg.append(pred_reg.cpu().numpy())
+
+                losses += loss.item()
+                losses_cat += loss.item()
+                losses_reg += loss_reg.item()
+                accuracy += (
+                    (pred_cat.argmax(1) == truth.to(device))
+                    .type(torch.float)
+                    .sum()
+                    .item()
+                )
                 N += len(pred_cat)
                 progress.update(
                     task, advance=1, description=f"Inference...   | Loss: {loss:.2f}"
@@ -1008,11 +1087,24 @@ class UParT_v0(Classifier_base):
                     N // dataloader.dataset.batch_size, dataloader.nits_expected
                 )
             progress.update(task, completed=dataloader.nits_expected)
-
+            
+        accuracy /= N
+        print("  ", f"Average loss: {losses/(b+1):.4f}")
+        print("  ", f"Average loss (cat): {losses_cat/(b+1):.4f}")
+        print("  ", f"Average loss (reg): {losses_reg/(b+1):.4f}")
+        print("  ", f"Average accuracy: {float(100*accuracy):.4f}")
+        
         predictions = np.concatenate(predictions)
+        predictions_reg = np.concatenate(predictions_reg)
         kinematics = np.concatenate(kinematics)
         truths = np.concatenate(truths)
         processes = np.concatenate(processes)
+
+        np.save(output["prediction"].path, predictions)
+        np.save(Path(output["prediction"].path).parent / 'prediction_reg.npy', predictions_reg)
+        np.save(output["truth"].path, truths)
+        np.save(output["kinematics"].path, kinematics)
+        np.save(output["process"].path, processes)
+        np.save(output["inference_time"].path, elapsed_column.elapsed_time)
         
         return predictions, truths, kinematics, processes, elapsed_column.elapsed_time
-    

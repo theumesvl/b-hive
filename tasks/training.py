@@ -20,6 +20,7 @@ from tasks.parameter_mixins import (
 )
 from utils.config.config_loader import ConfigLoader
 from utils.models.models import BTaggingModels
+from utils.loss.LossFunctionLoader import LossFunctionLoader
 
 def import_libraries():
     from torch.utils.data import DataLoader
@@ -35,10 +36,7 @@ def import_libraries():
     
     return DataLoader, torch, np, pick_attack, plot_roc_list, plot_losses, plot_accuracy, SchedulerLoader, OptimizerLoader, DatasetLoader, Module
 
-
-
 law.contrib.load("numpy")
-
 
 def check_memory_usage():
     memory_usage = psutil.virtual_memory().used / (1024.0**3)
@@ -80,7 +78,7 @@ def load_resume_training(model, path, device, output, optimizer=None, scheduler=
     except FileNotFoundError:
         print("No training to resume found. Starting a new one")
         ran_epochs = 0
-        best_loss_val = np.inf
+        best_loss_val = float('inf')
     
     train_metrics = {"loss": [], "acc": []}
     validation_metrics = {"loss": [], "acc": []}
@@ -265,7 +263,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         weights_file = (
             self.input()["file_list"].path.strip("processed_files.txt") + "weights.lz4"
         )
-        if config.get("processor", "PFCandidateAndVertexProcessing") == "LZ4FP16Processing":
+        if config.get("processor") == "LZ4FP16Processing":
             dtype = np.float16
         else:
             dtype = np.float32
@@ -352,7 +350,8 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             self.epochs, 
             dataloader = training_dataloader
         )
-
+        loss_function = LossFunctionLoader(self.loss_function, class_weights=class_weights)
+        
         print(f"Model:     {self.model_name}")
         print(f'Optimizer: {self.optimizer}')
         print(f'Scheduler: {self.lr_scheduler}')
@@ -386,6 +385,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             training_dataloader,
             validation_dataloader,
             self.local_path(),
+            loss_function,
             device=self.device,
             attack=attack,
             optimizer=optimizer,
@@ -397,7 +397,6 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             train_metrics=train_metrics,
             validation_metrics=validation_metrics,
             terminal_plot = self.terminal_plot,
-            class_weights=class_weights,
             #attack_magnitude=self.attack_magnitude,
             #attack_iterations=self.attack_iterations,
         )

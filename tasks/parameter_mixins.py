@@ -54,6 +54,10 @@ class TrainingDependency(object):
         default="AdamW",
         description="The optimizer to minimize loss. Default: AdamW",
     )
+    loss_function = luigi.Parameter(
+        default="CrossEntropyLoss",
+        description="The loss function to be used in training NN. Default: CrossEntropyLogCosh",
+    )
     betas = law.CSVParameter(
         cls=luigi.FloatParameter,
         default=(0.95, 0.999),

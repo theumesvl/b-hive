@@ -12,9 +12,10 @@ class CrossEntropyLogCosh(torch.nn.L1Loss):
     __constants__ = ['reduction','loss_lambda','loss_gamma','quantiles','loss_kappa','domain_weight','domain_dim']
 
     def __init__(self, 
+                 weight = None,
                  reduction: str = 'mean', 
-                 loss_lambda: float = 0.2, 
-                 loss_gamma: float = 0.2, 
+                 loss_lambda: float = 1, 
+                 loss_gamma: float = 1, 
                  quantiles: list = [],
              ) -> None:
         
@@ -22,6 +23,7 @@ class CrossEntropyLogCosh(torch.nn.L1Loss):
         self.loss_lambda = loss_lambda
         self.loss_gamma = loss_gamma
         self.quantiles = quantiles
+        self.weight = weight
         
     def forward(self, 
                 input_cat: Tensor, y_cat: Tensor, 
@@ -32,7 +34,7 @@ class CrossEntropyLogCosh(torch.nn.L1Loss):
         ## classification term
         loss_cat  = torch.tensor([0.0]).to(device)
         if input_cat.nelement():
-            loss_cat = torch.nn.functional.cross_entropy(input_cat, y_cat, reduction = self.reduction)
+            loss_cat = torch.nn.functional.cross_entropy(input_cat, y_cat, reduction = self.reduction, weight=self.weight)
 
         x_reg         = input_reg - y_reg
         x_reg_wnu     = input_reg_wnu.reshape(-1,1) - y_reg_wnu.reshape(-1,1)
@@ -70,3 +72,46 @@ class CrossEntropyLogCosh(torch.nn.L1Loss):
         loss_reg = self.loss_lambda * (loss_mean + loss_mean2) + self.loss_gamma * loss_quant
             
         return loss_cat + loss_reg, loss_cat, loss_reg
+
+
+class CrossEntropyLogCoshHLT(torch.nn.L1Loss):
+    __constants__ = ['reduction','loss_lambda']
+
+    def __init__(self, 
+                 weight = None,
+                 reduction: str = 'mean', 
+                 loss_lambda: float = 1, 
+             ) -> None:
+        
+        super().__init__(None, None, reduction)
+        self.loss_lambda = loss_lambda
+        self.weight = weight
+        
+    def forward(self, 
+                input_cat: Tensor, y_cat: Tensor, 
+                input_reg: Tensor, y_reg: Tensor, 
+                device) -> Tensor:
+
+        ## classification term
+        loss_cat  = torch.tensor([0.0]).to(device)
+        if input_cat.nelement():
+            loss_cat = torch.nn.functional.cross_entropy(input_cat, y_cat, reduction = self.reduction, weight=self.weight)
+
+        x_reg         = input_reg - y_reg
+        loss_mean     = 0
+        loss_reg      = torch.tensor([0.0]).to(device)
+
+        #Log-cosh loss
+        if loss_reg.nelement():
+            loss_mean += log_cosh(x_reg)
+                       
+        ## reduction
+        if self.reduction == 'mean':
+            loss_mean  = loss_mean.mean()
+        elif self.reduction == 'sum':
+            loss_mean  = loss_mean.sum()
+            
+        ## composition
+        loss_reg = loss_mean
+            
+        return loss_cat + self.loss_lambda * loss_reg, loss_cat, loss_reg
