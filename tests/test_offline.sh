@@ -45,7 +45,7 @@ fi
 FILELIST="$TESTDIRECTORY/data/offline/filelist.txt"
 echo "$DEST_FILE" > "$FILELIST"
 
-for task in DatasetConstructorTask TrainingTask InferenceTask ROCCurveTask; do #DatasetConstructorTask
+for task in DatasetConstructorTask TrainingTask InferenceTask ROCCurveTask; do
     for config in part_run3 part_fp16_run3 offline_run3 UParT_v0_run3; do
         path="$DATA_PATH/$task/$config/$test_version"
         if [ -d "$path" ]; then
@@ -114,7 +114,7 @@ time law run ROCCurveTask \
         --attack pgd \
         --attack-magnitude 0.1 \
         --betas 0.9,0.999
-        
+
 printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
 printf "+         Test 4:  offline_run3 + ParticleTransformer + epoch_lin_decay + RAdam + attack (jetfool) + test_attack (minimizer)    +\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
@@ -150,13 +150,14 @@ time law run ROCCurveTask \
         --test-dataset-version $test_version \
         --test-filelist $FILELIST  \
         --model-name UParT_v0 \
+        --loss-function CrossEntropyLogCosh \
         --epochs 1 \
         --batch-size 24 \
         --lr-scheduler batch_lin_decay \
         --lr-decay-factor 0.01 \
         --optimizer AdamW \
         --betas 0.9,0.999 
-        
+
 printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
 printf "++                                GREAT SUCCESS!!!                                           ++\n"

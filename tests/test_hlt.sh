@@ -81,6 +81,8 @@ time law run ROCCurveTask \
         --optimizer AdamW \
         --betas 0.95,0.999 
 
+
+
 printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
 printf "+      Test 2:  hlt_run3 + DeepJetTransformerHLT + batch_lin_decay + RAdam + attack (jetfool)           +\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
@@ -106,9 +108,8 @@ time law run ROCCurveTask \
         --betas 0.95,0.999 
 
 
-
 printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
-printf "+      Test 3:  hlt_run3 + ParticleNet_InProHLT + batch_lin_decay + Adam + attack (minimizer)           +\n"
+printf "+      Test 3:  hlt_run3 + UParticleNet_InProHLT + batch_lin_decay + Adam + no attack                   +\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
@@ -118,13 +119,10 @@ time law run ROCCurveTask \
         --filelist $FILELIST \
         --test-dataset-version $test_version \
         --test-filelist $FILELIST  \
-        --model-name ParticleNet_InProHLT \
+        --model-name UParticleNet_InProHLT \
+        --loss-function CrossEntropyLogCoshHLT \
         --epochs 2 \
         --batch-size 64 \
-        --attack minimizer \
-        --attack-magnitude 0.1 \
-        --test-attack minimizer \
-        --test-attack-magnitude 0.1 \
         --DatasetConstructorTask-chunk-size 10000 \
         --lr-scheduler batch_lin_decay \
         --lr-decay-factor 0.01 \
@@ -132,7 +130,7 @@ time law run ROCCurveTask \
         --betas 0.95,0.999 
 
 printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
-printf "+      Test 3:  hlt_run3 + GlobalParticleTransformerHLT + batch_cosine_warmup + AdamW                   +\n"
+printf "+      Test 4:  hlt_run3 + GlobalParticleTransformerHLT + batch_cosine_warmup + AdamW                   +\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
