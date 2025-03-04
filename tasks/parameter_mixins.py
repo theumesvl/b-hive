@@ -72,6 +72,8 @@ class TrainingDependency(object):
                 c.print(
                     "[black on yellow]Warning:", "CUDA device available. Running on cuda!"
                 )
+            else:
+                self.device = "cpu"
         else:
             self.device = "cpu"
             c.print(
