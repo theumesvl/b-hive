@@ -77,6 +77,8 @@ class LZ4FP16Dataset(IterableDataset):
                 random_number = np.random.rand(s.shape[0])
                 s = s[random_number < s[:, -1]]
 
+            s = np.random.permutation(s)
+
             if self.verbose:
                 print(f"Keeping {np.sum(mask)}/{len(mask)} events")
 
