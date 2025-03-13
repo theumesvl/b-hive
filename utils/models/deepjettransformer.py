@@ -22,6 +22,50 @@ from rich.progress import (
 from utils.models.base_model import Classifier_base, CustomTimeElapsedColumn
 
 
+class RMSNorm(torch.nn.Module):
+    def __init__(self, dim: int, eps: float = 1e-6):
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(dim))
+
+    def _norm(self, x):
+        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+
+    def forward(self, x):
+        output = self._norm(x.float()).type_as(x)
+        return output * self.weight
+
+
+class SwiGLU(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.act = nn.SiLU()
+
+    def forward(self, x):
+        x1, x2 = x.chunk(2, dim=-1)
+        return x1 * self.act(x2)
+
+class FFNBlock(nn.Module):
+    def __init__(self, dim, mult, swiglu = True, dropout=0.1):
+        super(FFNBlock, self).__init__()
+        self.hid_dim = dim * 4 * 2 if swiglu else dim * 4
+        self.dense_1 = nn.Linear(dim, self.hid_dim)
+        
+        self.activation = SwiGLU() if swiglu else nn.SiLU()
+        self.dense_2 = nn.Linear(dim * 4, dim)
+        self.dropout = nn.Dropout(dropout)
+        self.attn_norm = RMSNorm(dim*4)
+
+    def forward(self, x):
+        x_proj = self.dense_1(x)
+
+        x = self.attn_norm(self.activation(x_proj))
+
+        x = self.dense_2(x)
+        x = self.dropout(x)
+
+        return x
+
 class InputConv(nn.Module):
 
     def __init__(self, in_chn, out_chn, dropout_rate = 0.1, **kwargs):
@@ -165,10 +209,10 @@ class AttentionPooling(nn.Module):
         self.act = nn.GELU()
         self.dropout = nn.Dropout(0.1)
 
-    def forward(self, x):
+    def forward(self, x, pool_mask):
         
         a = self.ConvLayer(torch.transpose(x, 1, 2))
-        a = self.Softmax(a)
+        a = self.Softmax(a + pool_mask)
         
         y = torch.matmul(a,x)
         y = torch.squeeze(y, dim = 1)
@@ -194,28 +238,24 @@ class HF_TransformerEncoderLayer(nn.Module):
         >>> out = encoder_layer(src)
     """
 
-    def __init__(self, d_model, nhead, dropout=0.1, activation="relu"):
-        super(HF_TransformerEncoderLayer, self).__init__()
-        #MultiheadAttention
-        self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first = True)
+    def __init__(self, d_model, nhead, dropout=0.1, activation="relu", swiglu=True):
+        super().__init__()
+        # MultiheadAttention
+        self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=True)
+        
         # Implementation of Feedforward model
-        self.linear1 = nn.Linear(d_model, d_model*4)
-        self.dropout = nn.Dropout(dropout)
-        self.linear2 = nn.Linear(d_model*4, d_model)
+        self.attn_norm = RMSNorm(d_model)
+        self.ffn_norm = RMSNorm(d_model)
+        self.ffn = FFNBlock(d_model,4,swiglu = swiglu, dropout=dropout)
 
-        self.norm0 = nn.LayerNorm(d_model)
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model*4)
-        self.dropout0 = nn.Dropout(dropout)
-
-        self.activation = nn.GELU()
+        self.activation = nn.SiLU()  # _get_activation_fn(activation)
 
     def __setstate__(self, state):
-        if 'activation' not in state:
-            state['activation'] = nn.GELU()
+        if "activation" not in state:
+            state["activation"] = nn.SiLU()
         super(HF_TransformerEncoderLayer, self).__setstate__(state)
 
-    def forward(self, src, padding_mask):
+    def forward(self, src, mask):
         r"""Pass the input through the encoder layer.
         Args:
             src: the sequence to the encoder layer (required).
@@ -224,16 +264,25 @@ class HF_TransformerEncoderLayer(nn.Module):
         Shape:
             see the docs in Transformer class.
         """
-        src2 = self.norm0(src)
-        with sdpa_kernel(SDPBackend.FLASH_ATTENTION):
-            src2 = self.self_attn(src2, src2, src2, key_padding_mask = padding_mask)[0]
-        src = src + src2
-        src = self.norm1(src)
+        residual = src 
+        src = self.attn_norm(src) #Starting the Norm->Att->LS->Dr series
+        src = self.self_attn(
+            src,
+            src,
+            src,
+            attn_mask=mask,
+            #attn_mask=merged_mask.reshape(-1, merged_mask.shape[2], merged_mask.shape[2]),
+        )[0]
+        src = residual + src
+        residual = src
+
+        src = self.ffn_norm(src) #Starting the Norm->FFN->LS->Dr series
+        src = self.ffn(src)
+        src = residual + src
         
-        src2 = self.dropout0(self.linear2(self.norm2(self.activation(self.linear1(src)))))
-        src = src + src2
         return src
-    
+
+
 class HF_TransformerEncoder(nn.Module):
     r"""TransformerEncoder is a stack of N encoder layers
     Args:
@@ -253,7 +302,7 @@ class HF_TransformerEncoder(nn.Module):
         self.layers = _get_clones(encoder_layer, num_layers)
         self.num_layers = num_layers
 
-    def forward(self, src, padding_mask):
+    def forward(self, src, mask):
         r"""Pass the input through the encoder layers in turn.
         Args:
             src: the sequence to the encoder (required).
@@ -263,10 +312,9 @@ class HF_TransformerEncoder(nn.Module):
             see the docs in Transformer class.
         """
         output = src
-        padding_mask = padding_mask
 
         for mod in self.layers:
-            output = mod(output, padding_mask)
+            output = mod(output, mask)
 
         return output
     
@@ -284,7 +332,23 @@ def _get_activation_fn(activation):
 
 class DeepJetTransformer(Classifier_base):
 
-    
+    classes = {
+        "b": ["isB"],
+        "bb": ["isBB", "isGBB"],
+        "leptonicB": ["isLeptonicB", "isLeptonicB_C"],
+        "c": ["isC", "isCC", "isGCC"],
+        "uds": ["isUD", "isS"],
+        "g": ["isG"],
+    }
+
+    integer_features = {
+            "global_features": ["n_Cpfcand", "nCpfcan", "n_Npfcand", "nNpfcan", "nsv", "npv",
+                                "TagVarCSV_vertexCategory", "TagVarCSV_jetNSelectedTracks", "TagVarCSV_jetNTracksEtaRel"],
+            "cpf_candidates": ["Cpfcan_VTX_ass", "Cpfcan_puppiw", "Cpfcan_chi2", "Cpfcan_quality"],
+            "npf_candidates": ["Npfcan_isGamma", "Npfcan_HadFrac", "Npfcan_puppiw"],
+            "vtx_features": ["sv_ntracks"]
+    }
+
     cpf_candidates = [
         "Cpfcan_ptrel",
         "Cpfcan_drminsv",
@@ -297,7 +361,11 @@ class DeepJetTransformer(Classifier_base):
         "Cpfcan_phi",
         "Cpfcan_e"
     ]
-
+    
+    npf_candidates = [
+        "Npfcan_ptrel"
+    ]
+    
     vtx_features = [
         "sv_deltaR",
         "sv_normchi2",
@@ -309,7 +377,7 @@ class DeepJetTransformer(Classifier_base):
         "sv_chi2",
         "sv_e"
     ]
-    
+
     def __init__(
         self,
         config,
@@ -326,6 +394,8 @@ class DeepJetTransformer(Classifier_base):
         self.config = config
         self.for_inference = for_inference
         self.num_enc_layers = num_enc
+        self.num_head = num_head
+        self.dtype = torch.float16
 
         _, cpf_dim, npf_dim, vtx_dim = self.all_model_features_length()  
         
@@ -343,14 +413,15 @@ class DeepJetTransformer(Classifier_base):
 
         global_features, cpf_features, npf_features, vtx_features = inpt[0], inpt[1], inpt[2], inpt[3]
         cpf, npf, vtx = cpf_features, npf_features, vtx_features
-        
-        #padding_mask = torch.cat((cpf[:,:,:1],npf[:,:,:1],vtx[:,:,:1]), dim = 1)
+
         padding_mask = torch.cat((cpf.abs().sum(dim=-1), npf.abs().sum(dim=-1), vtx.abs().sum(dim=-1)), dim = 1)
         padding_mask = torch.eq(padding_mask, 0.0)
+        mask = (padding_mask.unsqueeze(1) + padding_mask.unsqueeze(2)).to(cpf.dtype).repeat((self.num_head,1,1)) * torch.finfo(self.dtype).min
+        pool_mask = padding_mask.unsqueeze(dim=1) * torch.finfo(self.dtype).min
         
         enc = self.InputProcess(cpf, npf, vtx)
-        enc = self.Encoder(enc, padding_mask)
-        enc = self.Pooling(enc)
+        enc = self.Encoder(enc, mask)
+        enc = self.Pooling(enc, pool_mask)
         
         x = self.DenseClassifier(enc)
         output = self.Linear(x)
@@ -396,7 +467,6 @@ class DeepJetTransformerHLT(Classifier_base):
         "jet_pfcand_trackjet_decayL",
         "jet_pfcand_npixhits",
         "jet_pfcand_nstriphits",
-        #"pfcand_mask"
     ]
     vtx_features = [
         "jet_sv_deta",
@@ -410,7 +480,6 @@ class DeepJetTransformerHLT(Classifier_base):
         "jet_sv_dxysig",
         "jet_sv_d3d",
         "jet_sv_d3dsig",
-        #"sv_mask"
     ]
     # Features that have integer dtype and should not be changed during adv attacks
     integer_features = {
@@ -478,6 +547,8 @@ class DeepJetTransformerHLT(Classifier_base):
         self.config = config
         self.for_inference = for_inference
         self.num_enc_layers = num_enc
+        self.num_head = num_head
+        self.dtype = torch.float16
 
         _, cpf_dim, _, vtx_dim = self.all_model_features_length()  
         
@@ -498,10 +569,12 @@ class DeepJetTransformerHLT(Classifier_base):
 
         padding_mask = torch.cat((cpf.abs().sum(dim=-1), vtx.abs().sum(dim=-1)), dim = 1)
         padding_mask = torch.eq(padding_mask, 0.0)
+        mask = (padding_mask.unsqueeze(1) + padding_mask.unsqueeze(2)).to(cpf.dtype).repeat((self.num_head,1,1)) * torch.finfo(self.dtype).min
+        pool_mask = padding_mask.unsqueeze(dim=1) * torch.finfo(self.dtype).min
         
         enc = self.InputProcess(cpf, vtx)
-        enc = self.Encoder(enc, padding_mask)
-        enc = self.Pooling(enc)
+        enc = self.Encoder(enc, mask)
+        enc = self.Pooling(enc, pool_mask)
         
         x = self.DenseClassifier(enc)
         output = self.Linear(x)
@@ -537,6 +610,7 @@ class DeepJetTransformerHLT(Classifier_base):
         b_pred = predictions[:, b_index]
         taup_pred = predictions[:, taup_index]
         taum_pred = predictions[:, taum_index]
+        tau_pred = taup_pred + taum_pred
         c_pred = predictions[:, c_index]
         uds_pred = predictions[:, uds_index]
         g_pred = predictions[:, g_index]
@@ -550,18 +624,20 @@ class DeepJetTransformerHLT(Classifier_base):
             (b_pred + l_pred + c_pred + taup_pred + taum_pred) > 0, (b_pred) / (b_pred + l_pred + c_pred + taup_pred + taum_pred), -1
         )
         uds_vs_g = np.where((uds_pred + g_pred) > 0, (uds_pred) / (uds_pred + g_pred), -1)
+        tauvsl = np.where((tau_pred + l_pred) > 0, (tau_pred) / (tau_pred + l_pred), -1)
 
         tau_veto = (truth != taup_index) & (truth != taum_index) & (summed_jets != 0)
         b_veto = (truth != b_index) & tau_veto & (summed_jets != 0)
         c_veto = (truth != c_index) & tau_veto & (summed_jets != 0)
+        bc_veto_tau = (truth != c_index) & (truth != b_index) & (summed_jets != 0)
         bc_veto = b_veto & c_veto
         l_veto = (truth != uds_index) & (truth != g_index) & tau_veto & (summed_jets != 0)
         no_veto = np.ones(b_veto.shape, dtype=bool)
 
-        labels = ["bvsl", "bvsc", "cvsb", "cvsl", "bvsall", "uds_vs_g"]
-        discs = [bvsl, bvsc, cvsb, cvsl, bvsall, uds_vs_g]
-        vetos = [c_veto, l_veto, l_veto, b_veto, no_veto, bc_veto]
-        truths = [b_jets, b_jets, c_jets, c_jets, b_jets, uds_jets]
+        labels = ["bvsl", "bvsc", "cvsb", "cvsl", "bvsall", "uds_vs_g", "tauvsl"]
+        discs = [bvsl, bvsc, cvsb, cvsl, bvsall, uds_vs_g, tauvsl]
+        vetos = [c_veto, l_veto, l_veto, b_veto, no_veto, bc_veto, bc_veto_tau]
+        truths = [b_jets, b_jets, c_jets, c_jets, b_jets, uds_jets, tau_jets]
         xlabels = [
             "b-identification",
             "b-identification",
@@ -569,8 +645,17 @@ class DeepJetTransformerHLT(Classifier_base):
             "c-identification",
             "b-identification",
             "uds-identification",
+            "tau-identification",
         ]
-        ylabels = ["light mis-id.", "c mis-id", "b mis-id.", "light mis-id.", "mis-id.", "gluons mis-id."]
+        ylabels = [
+            "light mis-id.", 
+            "c mis-id", 
+            "b mis-id.", 
+            "light mis-id.", 
+            "mis-id.", 
+            "gluons mis-id.", 
+            "light mis-id."
+        ]
 
         return discs, truths, vetos, labels, xlabels, ylabels
 
@@ -594,6 +679,8 @@ class GlobalDeepJetTransformerHLT(DeepJetTransformerHLT):
         self.config = config
         self.for_inference = for_inference
         self.num_enc_layers = num_enc
+        self.num_head = num_head
+        self.dtype = torch.float16
 
         global_dim, cpf_dim, _, vtx_dim = self.all_model_features_length()
         
@@ -615,12 +702,14 @@ class GlobalDeepJetTransformerHLT(DeepJetTransformerHLT):
 
         global_features = self.global_bn(global_features)
 
-        padding_mask = torch.cat((cpf[:,:,:1],vtx[:,:,:1]), dim = 1)
-        padding_mask = torch.eq(padding_mask[:,:,0], 0.0)
+        padding_mask = torch.cat((cpf.abs().sum(dim=-1), vtx.abs().sum(dim=-1)), dim = 1)
+        padding_mask = torch.eq(padding_mask, 0.0)
+        mask = (padding_mask.unsqueeze(1) + padding_mask.unsqueeze(2)).to(cpf.dtype).repeat((self.num_head,1,1)) * torch.finfo(self.dtype).min
+        pool_mask = padding_mask.unsqueeze(dim=1) * torch.finfo(self.dtype).min
         
         enc = self.InputProcess(cpf, vtx)
-        enc = self.Encoder(enc, padding_mask)
-        enc = self.Pooling(enc)
+        enc = self.Encoder(enc, mask)
+        enc = self.Pooling(enc, pool_mask)
 
         fts = torch.cat((global_features, enc), dim=1)
         
@@ -647,9 +736,12 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
     ):
         super().__init__(config, **kwargs)
 
+        self.dtype = torch.float16
+        
         self.config = config
         self.for_inference = for_inference
         self.num_enc_layers = num_enc
+        self.num_head = num_head
 
         self.jet_pt_index = config.get('global_features',[]).index('jet_pt')
         self.jet_eta_index = config.get('global_features',[]).index('jet_eta')
@@ -658,6 +750,7 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
 
         self.taup_index = list(self.classes).index('taup')
         self.taum_index = list(self.classes).index('taum')
+        self.tau_indices = torch.Tensor([list(self.classes).index(key) for key in list(self.classes) if "tau" in key])
 
         _, cpf_dim, _, vtx_dim = self.all_model_features_length()
         
@@ -678,10 +771,12 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
 
         padding_mask = torch.cat((cpf.abs().sum(dim=-1), vtx.abs().sum(dim=-1)), dim = 1)
         padding_mask = torch.eq(padding_mask, 0.0)
+        mask = (padding_mask.unsqueeze(1) + padding_mask.unsqueeze(2)).to(cpf.dtype).repeat((self.num_head,1,1)) * torch.finfo(self.dtype).min
+        pool_mask = padding_mask.unsqueeze(dim=1) * torch.finfo(self.dtype).min
         
         enc = self.InputProcess(cpf, vtx)
-        enc = self.Encoder(enc, padding_mask)
-        enc = self.Pooling(enc)
+        enc = self.Encoder(enc, mask)
+        enc = self.Pooling(enc, pool_mask)
         
         x = self.DenseClassifier(enc)
         output = self.Linear(x)
@@ -711,6 +806,7 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
         resume_epochs=0,
         train_metrics=None,
         validation_metrics=None,
+        class_weights=None,
         terminal_plot=False,
         **kwargs,
     ):
@@ -720,9 +816,9 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
             
         scaler = torch.amp.GradScaler(device)
 
-        if os.path.isfile(f'{directory}/training_metrics.npy'): 
-            train_metrics_file = np.load(f'{directory}/training_metrics.npy')
-            validation_metrics_file = np.load(f'{directory}/validation_metrics.npy')
+        if os.path.isfile(f'{directory}/training_metrics.npz'): 
+            train_metrics_file = np.load(f'{directory}/training_metrics.npz')
+            validation_metrics_file = np.load(f'{directory}/validation_metrics.npz')
             train_metrics["loss_cat"] = list(train_metrics_file["loss_cat"])
             train_metrics["loss_reg"] = list(train_metrics_file["loss_reg"])
             validation_metrics["loss_cat"] = list(validation_metrics_file["loss_cat"])
@@ -810,10 +906,18 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
         return train_metrics, validation_metrics
         
     def step(self, inpt, truth, loss_fn, target_pt, attack=None, device="cpu", mixed_precision=True):
-        
         with torch.autocast(device, enabled=mixed_precision):
             pred_cat, pred_reg = self.forward(inpt)
-            loss, loss_cat, loss_reg = loss_fn(pred_cat, truth, pred_reg, target_pt, device)  
+        print(f"pred_cat.shape = {pred_cat.shape}")
+        print(f"pred_reg.shape = {pred_reg.shape}")
+        print(f"truth.shape = {truth.shape}")
+        print(f"type(truth) = {type(truth)}")
+        print(f"truth = {truth}")
+        print(f"torch.unique(truth) = {torch.unique(truth)}")
+        print(f"device = {device}")
+        print(f"target_pt = {target_pt}")
+        print(f"target_pt.shape = {target_pt.shape}")
+        loss, loss_cat, loss_reg = loss_fn(pred_cat, truth, pred_reg, target_pt, device)  
         return pred_cat, loss, loss_cat, loss_reg
 
     def update(
@@ -828,7 +932,7 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
         device="cpu",
         verbose=True,
     ):
-        losses, losses_cat, losses_reg = 0.0, 0.0, 0.0
+        losses, losses_cat, losses_reg = [], [], []
         accuracy = 0.0
         self.train()
 
@@ -846,21 +950,20 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
             N = 0
             task = progress.add_task("Training...", total=dataloader.nits_expected)
             print("entering traing loop")
-            for b, (x, truth, w, process) in enumerate(dataloader):
-
+            for (x, truth, w, p) in dataloader:
                 x = x.float().to(device, non_blocking=True)
                 truth = truth.type(torch.LongTensor).to(device, non_blocking=True)
                 w = w.float().to(device, non_blocking=True)
 
                 inpt, truth = self.get_inpt(x, truth=truth, loss_fn=loss_fn, attack=attack, device=device)
-
                 jet_pt = inpt[0][:, self.jet_pt_index]
-                tau_mask = (truth == self.taup_index) | (truth == self.taum_index)
+                tau_mask = torch.isin(truth, self.tau_indices)
                 gen_pt = torch.where(
                     tau_mask,
                     inpt[0][:, self.gen_lep_pt_index],  # values where tau_mask is True
                     inpt[0][:, self.gen_pt]             # values where tau_mask is False
                 )
+        
                 target_pt = torch.clip(torch.nan_to_num(gen_pt / jet_pt, nan=0, posinf=0, neginf=0), min=0.3, max=2.0).reshape(-1, 1)
                 
                 if self.use_torch_compile:
@@ -875,7 +978,6 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
                         target_pt=target_pt,
                         device=device, mixed_precision=self.mixed_precision
                     )
-
                 if torch.isnan(loss).any():
                     raise ValueError("Loss contains NaN values! Something's wrong with calculation, please check.")
         
@@ -892,19 +994,16 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
                     # Standard precision training
                     loss.backward()
                     optimizer.step()
-                    
+
                 # Step the learning rate scheduler if applicable
                 if batch_lr and (scheduler is not None):
                     scheduler.step()
       
-                losses += loss.item()
-                losses_cat += loss_cat.item()
-                losses_reg += loss_reg.item()
+                losses.append(loss.item())
+                losses_cat.append(loss_cat.item())
+                losses_reg.append(loss_reg.item())
                 accuracy += (
-                    (pred.argmax(1) == truth.to(device))
-                    .type(torch.float)
-                    .sum()
-                    .item()
+                    (pred.argmax(1) == truth.to(device)).type(torch.float).sum().item()
                 )
 
                 N += len(pred)
@@ -918,12 +1017,10 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
             progress.update(task, completed=dataloader.nits_expected)
         #dataloader.nits_expected = N // dataloader.dataset.batch_size
         accuracy /= N
-        print("  ", f"Average loss: {losses/(b+1):.4f}")
-        print("  ", f"Average loss (cat): {losses_cat/(b+1):.4f}")
-        print("  ", f"Average loss (reg): {losses_reg/(b+1):.4f}")
+        print("  ", f"Average loss: {np.array(losses).mean():.4f}")
         print("  ", f"Average accuracy: {float(100*accuracy):.4f}")
 
-        return losses/(b+1), losses_cat/(b+1), losses_reg/(b+1), float(accuracy), elapsed_column.elapsed_time
+        return np.array(losses).mean(), np.array(losses_cat).mean(), np.array(losses_reg).mean(), float(accuracy), elapsed_column.elapsed_time
 
     def validate_model(self, dataloader, loss_fn, device="cpu", verbose=True, terminal_plot=False):
         losses, losses_cat, losses_reg = 0.0, 0.0, 0.0
@@ -942,7 +1039,7 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
             BarColumn(bar_width=None),
             TaskProgressColumn(),
             TimeRemainingColumn(),
-            TextColumn("0/? its"),
+            TextColumn(f"0/~{dataloader.nits_expected} its"),
             expand=True,
         ) as progress:
             N = 1
@@ -957,7 +1054,7 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
                     inpt, truth = self.get_inpt(x, truth=truth, loss_fn=loss_fn, attack=None, device=device)
 
                     jet_pt = inpt[0][:, self.jet_pt_index]
-                    tau_mask = (truth == self.taup_index) | (truth == self.taum_index)
+                    tau_mask = torch.isin(truth, self.tau_indices)
                     gen_pt = torch.where(
                         tau_mask,
                         inpt[0][:, self.gen_lep_pt_index],  # values where tau_mask is True
@@ -1047,7 +1144,7 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
             task = progress.add_task("Inference...", total=dataloader.nits_expected)
             
             for b, (x, truth, w, process) in enumerate(dataloader):
-
+                
                 x = x.float().to(device, non_blocking=True)
                 truth = truth.type(torch.LongTensor).to(device, non_blocking=True)
                 w = w.float().to(device, non_blocking=True)
@@ -1057,7 +1154,7 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
                 torch.backends.cudnn.enabled = True
 
                 jet_pt = inpt[0][:, self.jet_pt_index]
-                tau_mask = (truth == self.taup_index) | (truth == self.taum_index)
+                tau_mask = torch.isin(truth, self.tau_indices)
                 gen_pt = torch.where(
                     tau_mask,
                     inpt[0][:, self.gen_lep_pt_index],  # values where tau_mask is True
@@ -1092,7 +1189,6 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
                 progress.columns[-1].text_format = "{}/{} its".format(
                     N // dataloader.dataset.batch_size, dataloader.nits_expected
                 )
-                #print('MMmmm')
             progress.update(task, completed=dataloader.nits_expected)
             
         accuracy /= N

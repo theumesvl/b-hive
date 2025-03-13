@@ -399,6 +399,23 @@ class FeatureConv(nn.Module):
 
 class ParticleNetTagger(Classifier_base):
 
+    classes = {
+        "b": ["isB"],
+        "bb": ["isBB", "isGBB"],
+        "leptonicB": ["isLeptonicB", "isLeptonicB_C"],
+        "c": ["isC", "isCC", "isGCC"],
+        "uds": ["isUD", "isS"],
+        "g": ["isG"],
+    }
+
+    integer_features = {
+            "global_features": ["n_Cpfcand", "nCpfcan", "n_Npfcand", "nNpfcan", "nsv", "npv",
+                                "TagVarCSV_vertexCategory", "TagVarCSV_jetNSelectedTracks", "TagVarCSV_jetNTracksEtaRel"],
+            "cpf_candidates": ["Cpfcan_VTX_ass", "Cpfcan_puppiw", "Cpfcan_chi2", "Cpfcan_quality"],
+            "npf_candidates": ["Npfcan_isGamma", "Npfcan_HadFrac", "Npfcan_puppiw"],
+            "vtx_features": ["sv_ntracks"]
+    }
+
     def __init__(
         self,
         config,
@@ -618,6 +635,7 @@ class ParticleNetTaggerHLT(Classifier_base):
         b_pred = predictions[:, b_index]
         taup_pred = predictions[:, taup_index]
         taum_pred = predictions[:, taum_index]
+        tau_pred = taup_pred + taum_pred
         c_pred = predictions[:, c_index]
         uds_pred = predictions[:, uds_index]
         g_pred = predictions[:, g_index]
@@ -631,18 +649,20 @@ class ParticleNetTaggerHLT(Classifier_base):
             (b_pred + l_pred + c_pred + taup_pred + taum_pred) > 0, (b_pred) / (b_pred + l_pred + c_pred + taup_pred + taum_pred), -1
         )
         uds_vs_g = np.where((uds_pred + g_pred) > 0, (uds_pred) / (uds_pred + g_pred), -1)
+        tauvsl = np.where((tau_pred + l_pred) > 0, (tau_pred) / (tau_pred + l_pred), -1)
 
         tau_veto = (truth != taup_index) & (truth != taum_index) & (summed_jets != 0)
         b_veto = (truth != b_index) & tau_veto & (summed_jets != 0)
         c_veto = (truth != c_index) & tau_veto & (summed_jets != 0)
+        bc_veto_tau = (truth != c_index) & (truth != b_index) & (summed_jets != 0)
         bc_veto = b_veto & c_veto
         l_veto = (truth != uds_index) & (truth != g_index) & tau_veto & (summed_jets != 0)
         no_veto = np.ones(b_veto.shape, dtype=bool)
 
-        labels = ["bvsl", "bvsc", "cvsb", "cvsl", "bvsall", "uds_vs_g"]
-        discs = [bvsl, bvsc, cvsb, cvsl, bvsall, uds_vs_g]
-        vetos = [c_veto, l_veto, l_veto, b_veto, no_veto, bc_veto]
-        truths = [b_jets, b_jets, c_jets, c_jets, b_jets, uds_jets]
+        labels = ["bvsl", "bvsc", "cvsb", "cvsl", "bvsall", "uds_vs_g", "tauvsl"]
+        discs = [bvsl, bvsc, cvsb, cvsl, bvsall, uds_vs_g, tauvsl]
+        vetos = [c_veto, l_veto, l_veto, b_veto, no_veto, bc_veto, bc_veto_tau]
+        truths = [b_jets, b_jets, c_jets, c_jets, b_jets, uds_jets, tau_jets]
         xlabels = [
             "b-identification",
             "b-identification",
@@ -650,8 +670,17 @@ class ParticleNetTaggerHLT(Classifier_base):
             "c-identification",
             "b-identification",
             "uds-identification",
+            "tau-identification",
         ]
-        ylabels = ["light mis-id.", "c mis-id", "b mis-id.", "light mis-id.", "mis-id.", "gluons mis-id."]
+        ylabels = [
+            "light mis-id.", 
+            "c mis-id", 
+            "b mis-id.", 
+            "light mis-id.", 
+            "mis-id.", 
+            "gluons mis-id.", 
+            "light mis-id."
+        ]
 
         return discs, truths, vetos, labels, xlabels, ylabels
 
@@ -737,9 +766,9 @@ class UParticleNetTaggerHLT(ParticleNetTaggerHLT):
             
         scaler = torch.amp.GradScaler(device)
 
-        if os.path.isfile(f'{directory}/training_metrics.npy'): 
-            train_metrics_file = np.load(f'{directory}/training_metrics.npy')
-            validation_metrics_file = np.load(f'{directory}/validation_metrics.npy')
+        if os.path.isfile(f'{directory}/training_metrics.npz'): 
+            train_metrics_file = np.load(f'{directory}/training_metrics.npz')
+            validation_metrics_file = np.load(f'{directory}/validation_metrics.npz')
             train_metrics["loss_cat"] = list(train_metrics_file["loss_cat"])
             train_metrics["loss_reg"] = list(train_metrics_file["loss_reg"])
             validation_metrics["loss_cat"] = list(validation_metrics_file["loss_cat"])
@@ -830,7 +859,7 @@ class UParticleNetTaggerHLT(ParticleNetTaggerHLT):
         
         with torch.autocast(device, enabled=mixed_precision):
             pred_cat, pred_reg = self.forward(inpt)
-            loss, loss_cat, loss_reg = loss_fn(pred_cat, truth, pred_reg, target_pt, device)  
+        loss, loss_cat, loss_reg = loss_fn(pred_cat, truth, pred_reg, target_pt, device)  
         return pred_cat, loss, loss_cat, loss_reg
 
     def update(
@@ -1084,14 +1113,17 @@ class UParticleNetTaggerHLT(ParticleNetTaggerHLT):
                 target_pt = torch.clip(torch.nan_to_num(gen_pt / jet_pt, nan=0, posinf=0, neginf=0), min=0.3, max=2.0).reshape(-1, 1)
 
                 with torch.no_grad():
+                    #print(f'inpt.shape = {inpt[0].shape}')
                     pred_cat, pred_reg = self.forward(inpt)
                     loss, loss_cat, loss_reg = loss_fn(pred_cat, truth, pred_reg, target_pt, device)
+                    #print(f'loss = {loss}')
         
                 kinematics.append(inpt[0][..., [self.jet_pt_index, self.jet_eta_index, self.gen_lep_pt_index, self.gen_pt]].cpu().numpy())
                 truths.append(truth.cpu().numpy().astype(int))
                 processes.append(process.cpu().numpy())
                 predictions.append(pred_cat.cpu().numpy())
                 predictions_reg.append(pred_reg.cpu().numpy())
+                #print(f'len(kinematics) = {len(kinematics)}')
 
                 losses += loss.item()
                 losses_cat += loss_cat.item()
@@ -1102,7 +1134,9 @@ class UParticleNetTaggerHLT(ParticleNetTaggerHLT):
                     .sum()
                     .item()
                 )
+                #print(f'losses = {losses}')
                 N += len(pred_cat)
+                #print(f'N = {N}')
                 progress.update(
                     task, advance=1, description=f"Inference...   | Loss: {loss:.2f}"
                 )

@@ -30,23 +30,6 @@ class CustomTimeElapsedColumn(TimeElapsedColumn):
         
 class Classifier_base(nn.Module):
 
-    classes = {
-        "b": ["isB"],
-        "bb": ["isBB", "isGBB"],
-        "leptonicB": ["isLeptonicB", "isLeptonicB_C"],
-        "c": ["isC", "isCC", "isGCC"],
-        "uds": ["isUD", "isS"],
-        "g": ["isG"],
-    }
-
-    integer_features = {
-            "global_features": ["n_Cpfcand", "nCpfcan", "n_Npfcand", "nNpfcan", "nsv", "npv",
-                                "TagVarCSV_vertexCategory", "TagVarCSV_jetNSelectedTracks", "TagVarCSV_jetNTracksEtaRel"],
-            "cpf_candidates": ["Cpfcan_VTX_ass", "Cpfcan_puppiw", "Cpfcan_chi2", "Cpfcan_quality"],
-            "npf_candidates": ["Npfcan_isGamma", "Npfcan_HadFrac", "Npfcan_puppiw"],
-            "vtx_features": ["sv_ntracks"]
-    }
-
     def _create_feature_indices(self, feature_list, feature_key):
         """Helper function to create feature indices from model attributes or config."""
         source = getattr(self, feature_key, self.config.get(feature_key, []))
@@ -338,7 +321,7 @@ class Classifier_base(nn.Module):
                 if verbose:
                     if torch.isnan(loss).any():
                         raise ValueError("Loss contains NaN values! Something's wrong with calculation, please check.")
-        
+
                 optimizer.zero_grad(set_to_none=True)
                 
                 if self.mixed_precision:
@@ -417,7 +400,7 @@ class Classifier_base(nn.Module):
                     if verbose:
                         if torch.isnan(loss).any():
                             raise ValueError("Loss contains NaN values! Something's wrong with calculation, please check.")
-
+                        
                     losses += loss.item()
 
                     accuracy += (

@@ -153,6 +153,7 @@ class InferenceTask(
             bins_eta=config["bins_eta"],
             verbose=self.verbose,
             config=config,
+            batch_size=self.batch_size,
         )
         test_dataloader = DataLoader(
             test_data,

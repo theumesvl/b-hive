@@ -10,6 +10,23 @@ torch.multiprocessing.set_sharing_strategy("file_system")
 
 class DeepJet(Classifier_base):
 
+    classes = {
+        "b": ["isB"],
+        "bb": ["isBB", "isGBB"],
+        "leptonicB": ["isLeptonicB", "isLeptonicB_C"],
+        "c": ["isC", "isCC", "isGCC"],
+        "uds": ["isUD", "isS"],
+        "g": ["isG"],
+    }
+
+    integer_features = {
+            "global_features": ["n_Cpfcand", "nCpfcan", "n_Npfcand", "nNpfcan", "nsv", "npv",
+                                "TagVarCSV_vertexCategory", "TagVarCSV_jetNSelectedTracks", "TagVarCSV_jetNTracksEtaRel"],
+            "cpf_candidates": ["Cpfcan_VTX_ass", "Cpfcan_puppiw", "Cpfcan_chi2", "Cpfcan_quality"],
+            "npf_candidates": ["Npfcan_isGamma", "Npfcan_HadFrac", "Npfcan_puppiw"],
+            "vtx_features": ["sv_ntracks"]
+    }
+
     def __init__(self,
                  config,
                  cpf_conv = [64, 32, 32, 8],
@@ -116,7 +133,6 @@ class DeepJetHLT(Classifier_base):
         "jet_pfcand_trackjet_decayL",
         "jet_pfcand_npixhits",
         "jet_pfcand_nstriphits",
-         #"pfcand_mask"
     ]
     vtx_features = [
         "jet_sv_deta",
@@ -130,7 +146,6 @@ class DeepJetHLT(Classifier_base):
         "jet_sv_dxysig",
         "jet_sv_d3d",
         "jet_sv_d3dsig"
-        #"sv_mask"
     ]
     
     # Features that have integer dtype and should not be changed during adv attacks
