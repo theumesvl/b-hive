@@ -158,8 +158,29 @@ time law run ROCCurveTask \
         --optimizer AdamW \
         --betas 0.9,0.999 
 
+printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
+printf "+         Test 6:  part_run3 + ParticleTransformer2 + epoch_lin_decay + AdamW                                                       +\n"
+printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+
+time law run ROCCurveTask \
+        --config part_run3 \
+        --training-version $test_version \
+        --dataset-version $test_version \
+        --filelist $FILELIST \
+        --test-dataset-version $test_version \
+        --test-filelist $FILELIST  \
+        --model-name ParticleTransformer2 \
+        --epochs 5 \
+        --batch-size 512 \
+        --lr-scheduler epoch_lin_decay \
+        --lr-decay-factor 0.01 \
+        --optimizer AdamW \
+        --mixed-precision False \
+        --betas 0.95,0.999          
+
 printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
 printf "++                                GREAT SUCCESS!!!                                           ++\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+
