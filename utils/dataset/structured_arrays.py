@@ -31,10 +31,7 @@ def structured_array_from_tree(
     )
     arr = np.empty((len(events),), dtype=dtype)
     #print('KEYS:', keys)
-    counter = 0
     for key, dtype_name in zip(keys, dtype.fields):
-        if 'label_bb' in key:
-            counter += 1
         if feature_length == 1:
             arr[key] = np.array(events[key], dtype=[(dtype_name, precision)])
         else:
@@ -46,8 +43,6 @@ def structured_array_from_tree(
                     np.float32,
                 )
             )
-    if counter > 1:
-        print('COUNTER: ', counter)
     return arr
 
 
@@ -86,6 +81,8 @@ def structured_custom_array_from_tree(
         ]
     )
     for key, dtype_name in zip(keys, dtype.fields):
+        if 'label_bb' in key:
+            counter += 1
         if feature_length == 1:
             arr[key] = np.array(events[key], dtype=[(dtype_name, precision)])
         else:

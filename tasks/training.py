@@ -211,9 +211,6 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             print("Using weighted sampling")
             class_weights = None
 
-        memory_usage0 = check_memory_usage()
-        print("Memory usage Model and OPTIMIZER loading: ", memory_usage0)
-
         # Model Defintion
         if issubclass(type(model := BTaggingModels(self.model_name)), torch.nn.Module):
             model = BTaggingModels(self.model_name).to(self.device)
@@ -285,8 +282,6 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             #     for proc in config.get("processes", [])
             # ],
         )
-        memory_usage2 = check_memory_usage()
-        print("Memory usage after training data loading: ", memory_usage2)
 
         validation_data = datasetClass(
             validation_files,
@@ -304,9 +299,6 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             # ],
         )
 
-        memory_usage3 = check_memory_usage()
-        print("Memory usage after validation data loading: ", memory_usage3)
-
         # Define the corresponding dataloaders
         training_dataloader = DataLoader(
             training_data,
@@ -315,9 +307,6 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             pin_memory=True,  # Pin Memory for faster CPU/GPU memory load
             num_workers=self.n_threads,
         )
-
-        memory_usage4 = check_memory_usage()
-        print("Memory usage after initializing training dataloader: ", memory_usage4)
 
         # Expected number of iterations
         training_dataloader.nits_expected = len(training_dataloader)
@@ -330,8 +319,8 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             num_workers=self.n_threads,
         )
 
-        memory_usage5 = check_memory_usage()
-        print("Memory usage after initializing validation dataloader: ", memory_usage5)
+        memory_usage2 = check_memory_usage()
+        print("Memory usage after initializing validation dataloader: ", memory_usage2)
 
         validation_dataloader.nits_expected = len(validation_dataloader)
         # embed()

@@ -136,7 +136,7 @@ class DeepJet(Classifier, torch.nn.Module):
 
         self.glob_integers = torch.tensor([2, 3, 4, 5, 8, 13, 14])
         self.cpf_integers = torch.tensor([12, 13, 14, 15])
-        self.npf_integers = torch.tensor([2])
+        self.npf_integers = torch.tensor([2, 5])
         self.vtx_integers = torch.tensor([3])
         self.integers = [
             self.glob_integers,
@@ -752,3 +752,188 @@ class MoDJet(DeepJet):
             self.npf_defaults,
             self.vtx_defaults,
         ]
+
+
+def inference_input_features_to_parquet(global_feature, cpf_feature, npf_feature, vtx_feature, filepath, parquet_writer):
+    global_feature = np.swapaxes(global_feature, 0, 1)
+    cpf_feature = np.swapaxes(np.swapaxes(cpf_feature, 0, 1), 0, 2)
+    npf_feature = np.swapaxes(np.swapaxes(npf_feature, 0, 1), 0, 2)
+    vtx_feature = np.swapaxes(np.swapaxes(vtx_feature, 0, 1), 0, 2)
+    
+    global_feature_array = ak.Array({
+        feature: global_feature[i].tolist() for i, feature in enumerate(DeepJet_PAIReD.global_features)
+    })
+    cpf_feature_array = ak.Array({
+        feature: cpf_feature[i].tolist() for i, feature in enumerate(DeepJet_PAIReD.cpf_candidates)
+    })
+    npf_feature_array = ak.Array({
+        feature: npf_feature[i].tolist() for i, feature in enumerate(DeepJet_PAIReD.npf_candidates)
+    })
+    vtx_feature_array = ak.Array({
+        feature: vtx_feature[i].tolist() for i, feature in enumerate(DeepJet_PAIReD.vtx_features)
+    })
+
+    # Combine sv_array and cpf_array into a single awkward array
+    combined_array = ak.zip({
+        'global_features': global_feature_array,
+        'cpf_features': cpf_feature_array,
+        'npf_features': npf_feature_array,
+        'vtx_features': vtx_feature_array,
+    })
+
+    table = ak.to_arrow_table(combined_array)
+    if parquet_writer is None:
+        print('Parquet writer is none')
+    # Initialize Parquet writer if not already initialized
+    if parquet_writer is None:
+        parquet_writer = pq.ParquetWriter(filepath, table.schema)
+        print(f"Parquet file created: '{filepath}'")
+    
+    parquet_writer.write_table(table)
+    
+    return parquet_writer
+
+
+class DeepJet_PAIReD(DeepJet):
+    n_cpf = 25
+    n_npf = 25
+    n_vtx = 5
+    datasetClass = DeepJetDataset
+    optimizerClass2 = torch.optim.Adam
+
+    classes = {
+        "b": ["isB"],
+        "bb": ["isBB", "isGBB"],
+        "leptonicB": ["isLeptonicB", "isLeptonicB_C"],
+        "c": ["isC", "isCC", "isGCC"],
+        # "uds": ["isUD", "isS"],
+        "uds": ["isU", "isD", "isS"],
+        "g": ["isG"],
+    }
+
+    cpf_candidates = [
+        "Cpfcan_BtagPf_trackEtaRel",
+        "Cpfcan_BtagPf_trackPtRel",
+        "Cpfcan_BtagPf_trackPPar",
+        "Cpfcan_BtagPf_trackDeltaR",
+        "Cpfcan_BtagPf_trackPParRatio",
+        "Cpfcan_BtagPf_trackSip2dVal",
+        "Cpfcan_BtagPf_trackSip2dSig",
+        "Cpfcan_BtagPf_trackSip3dVal",
+        "Cpfcan_BtagPf_trackSip3dSig",
+        "Cpfcan_BtagPf_trackJetDistVal",
+        "Cpfcan_ptrel",
+        "Cpfcan_drminsv",
+        "Cpfcan_VTX_ass",
+        "Cpfcan_puppiw",
+        "Cpfcan_chi2",
+        "Cpfcan_quality",
+    ]
+
+    npf_candidates = [
+        "Npfcan_ptrel",
+        "Npfcan_deltaR",
+        "Npfcan_isGamma",
+        "Npfcan_HadFrac",
+        "Npfcan_drminsv",
+        "Npfcan_puppiw",
+    ]
+
+    vtx_features = [
+        "sv_pt",
+        "sv_deltaR",
+        "sv_mass",
+        "sv_ntracks",
+        "sv_chi2",
+        "sv_normchi2",
+        "sv_dxy",
+        "sv_dxysig",
+        "sv_d3d",
+        "sv_d3dsig",
+        "sv_costhetasvpv",
+        "sv_enratio",
+    ]
+
+    global_features = [
+        "jet_pt",
+        "jet_eta",
+        "n_Cpfcand",
+        "n_Npfcand",
+        "nsv",
+        "npv",
+        "TagVarCSV_trackSumJetEtRatio",
+        "TagVarCSV_trackSumJetDeltaR",
+        "TagVarCSV_vertexCategory",
+        "TagVarCSV_trackSip2dValAboveCharm",
+        "TagVarCSV_trackSip2dSigAboveCharm",
+        "TagVarCSV_trackSip3dValAboveCharm",
+        "TagVarCSV_trackSip3dSigAboveCharm",
+        "TagVarCSV_jetNSelectedTracks",
+        "TagVarCSV_jetNTracksEtaRel",
+    ]
+
+    def predict_model(self, dataloader, device, attack=None, writeout_path=None):
+        self.eval()
+        # parquet_writer = None
+        # kinematics = []
+        truths = []
+        processes = []
+        predictions = []
+        for (
+            global_features,
+            cpf_features,
+            npf_features,
+            vtx_features,
+            truth,
+            weight,
+            process,
+        ) in dataloader:
+            
+            # append jet_pt and jet_eta
+            # this should be done differenlty in the future... avoid array slicing with magic numbers!
+            torch.backends.cudnn.enabled = False
+            (
+                global_features,
+                cpf_features,
+                npf_features,
+                vtx_features,
+                truth,
+            ) = attack(
+                [
+                    feature.float().to(device)
+                    for feature in [
+                        global_features,
+                        cpf_features,
+                        npf_features,
+                        vtx_features,
+                    ]
+                ],
+                truth.type(torch.LongTensor).to(device),
+                self,
+                self.loss_fn,
+            )
+            # parquet_writer = inference_input_features_to_parquet(global_features.cpu().numpy(), cpf_features.cpu().numpy(), npf_features.cpu().numpy(), vtx_features.cpu().numpy(), writeout_path, parquet_writer)
+
+            torch.backends.cudnn.enabled = True
+            with torch.no_grad():
+                pred = self(
+                    *[
+                        feature.float().to(device)
+                        for feature in [
+                            global_features,
+                            cpf_features,
+                            npf_features,
+                            vtx_features,
+                        ]
+                    ]
+                )
+            # kinematics.append(global_features[..., :2].cpu().numpy())
+            truths.append(truth.cpu().numpy().astype(int))
+            processes.append(process.cpu().numpy())
+            predictions.append(pred.cpu().numpy())
+
+        predictions = np.concatenate(predictions)
+        # kinematics = np.concatenate(kinematics)
+        truths = np.concatenate(truths)
+        processes = np.concatenate(processes)
+        return predictions, truths, processes #kinematics

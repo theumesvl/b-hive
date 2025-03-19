@@ -16,8 +16,6 @@ def weight_all_files_histrogram_weighting(
     # for file in track(files, "Evaluating and saving the weights..."):
     for file in files:
         samples = np.load(file, allow_pickle=True)
-        #from IPython import embed
-        #embed()
         jet_pt = samples["global_features"][pt_key]
         jet_eta = samples["global_features"][eta_key]
         pt_coordinate = np.digitize(jet_pt, bins_pt) - 1

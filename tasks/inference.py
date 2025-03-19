@@ -59,10 +59,12 @@ class InferenceTask(
 
     def output(self):
         return {
-            # # "output_root": self.local_target("output.root"),
+            # # # "output_root": self.local_target("output.root"),
             "prediction": self.local_target("prediction.npy"),
             "process": self.local_target("process.npy"),
             "truth": self.local_target("truth.npy"),
+            "kinematics": self.local_target("kinematics.npy"),
+            # "inference_writeout": self.local_target("inference_feature_writeout.parquet"),
         }
 
     def run(self):
@@ -144,10 +146,10 @@ class InferenceTask(
 
         print("Start inference on", self.device)
         predictions, truths, kinematics, processes = model.predict_model(
-            test_dataloader, self.device, attack=attack
+            test_dataloader, self.device, attack=attack ##writeout_path=self.output()["inference_writeout"].path
         )
 
-        # np.save(self.output()["kinematics"].path, kinematics)
+        np.save(self.output()["kinematics"].path, kinematics)
         np.save(self.output()["prediction"].path, predictions)
         np.save(self.output()["process"].path, processes)
         np.save(self.output()["truth"].path, truths)

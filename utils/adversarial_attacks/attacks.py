@@ -145,7 +145,8 @@ class Attacks:
         alphas = []
         for e in self.epsilons_per_feature:
             alphas.append(self.epsilon * e / self.iterations)
-
+        
+        
         adversarial_inputs = []
         for input in inputs:
             adversarial_inputs.append(
@@ -154,7 +155,7 @@ class Attacks:
                 .to(self.device, non_blocking=True)
                 .requires_grad_(True)
             )
-
+        
         for i in range(self.iterations):
             prediction = model.forward(*adversarial_inputs)
 
@@ -184,9 +185,7 @@ class Attacks:
 
                 for index, delta in enumerate(deltas):
                     adversarial_inputs[index] += delta
-
         adversarial_inputs = self.limit_relative_change(inputs, adversarial_inputs)
-
         return *[input.detach() for input in adversarial_inputs], truth
 
     # Code adapted from https://github.com/LTS4/DeepFool, based on https://arxiv.org/pdf/1511.04599.pdf

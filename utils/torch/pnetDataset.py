@@ -91,7 +91,7 @@ class PNetDataset(IterableDataset):
                         truths[truth[flav]] = index
 
                         
-                mask = np.logical_and(mask, np.where('hmass'==100)) #TODO: first implementation of cuts as long as they are not globally implemented, do this here
+                # mask = np.logical_and(mask, np.where('hmass'==100)) #TODO: first implementation of cuts as long as they are not globally implemented, do this here
                 truths = truths[mask]
                 processes = process[mask]
                 weights = weight[mask]
