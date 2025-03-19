@@ -8,6 +8,9 @@ class ModelName:
     PAIReDTagger = "PAIReDTagger"
     ParticleNet = "ParticleNet"
     ParticleTransformer = "ParticleTransformer"
+    PAIReDTagger = "PAIReDTagger"
+    DeepJet_PAIReD = "DeepJet_PAIReD"
+    ParT_cls = "ParT_cls"
 
 
 def BTaggingModels(model: str = "", *args, **kwargs):
@@ -48,5 +51,13 @@ def BTaggingModels(model: str = "", *args, **kwargs):
             from utils.models.particletransformer import ParticleTransformer
 
             return ParticleTransformer(**kwargs)
+        case ModelName.DeepJet_PAIReD:
+            from utils.models.deepjet import DeepJet_PAIReD
+            
+            return DeepJet_PAIReD(**kwargs)
+        case ModelName.ParT_cls:
+            from utils.models.ParT_Paired import ParT_cls
+            
+            return ParT_cls(**kwargs)        
         case _:
             raise NotImplementedError

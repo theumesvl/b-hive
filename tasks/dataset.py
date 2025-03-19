@@ -62,6 +62,10 @@ Either you forgot to specify the path to the file or are using a wrong dataset-v
         all_files = []
         samples = read_in_samples_match_processes(self.filelist, config["processes"])
 
+        print('######## Check samples ########')
+        print('Number of files:', len(samples))
+        print('###############################')
+
         if self.debug:
             # skim files to only 10 files per process
             samples = {
