@@ -171,6 +171,3 @@ cython_debug/
 
 # evaluation skripts on merging branch
 evaluate_task_artifacts/*
-
-
-.gitignore
