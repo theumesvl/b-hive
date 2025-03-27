@@ -9,6 +9,8 @@ c = Console()
 
 
 class BaseTask(law.Task):
+    # now done with self.set_device()
+    """
     if torch.cuda.is_available():
         device = "cuda"
         c.print(
@@ -20,6 +22,7 @@ class BaseTask(law.Task):
         c.print(
             "[black on yellow]Warning:", "No CUDA device available. Running on cpu..."
         )
+    """
 
     debug = luigi.BoolParameter(
         default=False,

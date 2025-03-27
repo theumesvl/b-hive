@@ -57,7 +57,7 @@ def plot_roc_list(
                 os.path.join(output_directory, f"roc_{name}_{roc_label}.npy"),
                 np.array((fpr, tpr)),
             )
-        for ext in ["png"]:#, "pdf"]:
+        for ext in ["png", "pdf"]:
             plot_name = os.path.join(output_directory, f"roc_{name}_{roc_label}.{ext}")
             plot_roc(
                 [(fpr, tpr, area)],
@@ -90,29 +90,28 @@ def calculate_roc(truth, discriminator, veto, output_directory, dataset_key, nam
     return fpr, tpr, area
 
 
-def plot_losses(train_loss, test_loss, output_dir):
-    plt.title("Losses")
-    plt.plot(*np.array(list(enumerate(test_loss, 1))).T, '-d', label="Validation")
-    plt.plot(*np.array(list(enumerate(train_loss, 1))).T, '-d', label="Train")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.grid()
-    plt.savefig(os.path.join(output_dir, "loss.pdf"))
-    plt.savefig(os.path.join(output_dir, "loss.png"))
-    plt.close()
-    
-def plot_accuracy(train_acc, test_acc, output_dir):
-    plt.title("Accuracy")
-    plt.plot(*np.array(list(enumerate(test_acc, 1))).T, '-d', label="Validation")
-    plt.plot(*np.array(list(enumerate(train_acc, 1))).T, '-d', label="Train")
-    plt.xlabel("Epoch")
-    plt.ylabel("Accuracy")
-    plt.legend()
-    plt.grid()
-    plt.savefig(os.path.join(output_dir, "acc.pdf"))
-    plt.savefig(os.path.join(output_dir, "acc.png"))
-    plt.close()
+def plot_losses(train_loss, test_loss, output_dir=None, epochs=None):
+    fig, ax = plt.subplots()
+    ax.set_title("Losses")
+    if train_loss is not None:
+        ax.plot(
+            np.linspace(0, epochs, len(train_loss)),
+            train_loss,
+            label="Train",
+            color="blue",
+        )
+    if test_loss is not None:
+        ax.plot(
+            np.linspace(0, epochs, len(test_loss)),
+            test_loss,
+            label="Validation",
+            color="orange",
+        )
+    ax.set_xlabel("Epochs")
+    ax.set_ylabel("Loss")
+    ax.legend()
+    fig.savefig(os.path.join(output_dir, "loss.pdf"))
+    fig.savefig(os.path.join(output_dir, "loss.png"))
 
 
 def plot_roc(
@@ -149,7 +148,10 @@ def plot_roc(
         try:
             fpr, tpr, area = roc
         except ValueError as e:
-            from sklearn.metrics import auc # for some reason it could not find auc without another import, but I do not see why.
+            from sklearn.metrics import (
+                auc,
+            )  # for some reason it could not find auc without another import, but I do not see why.
+
             fpr, tpr = roc
             index = np.unique(fpr, return_index=True)[1]
             fpr = np.asarray([fpr[i] for i in sorted(index)])
@@ -158,7 +160,11 @@ def plot_roc(
         plt.plot(
             tpr,
             fpr,
-            label=f"{label}" + rf"(AUC${{\approx}}${np.round(area, 3)})" if writeout_auc else f"{label}",
+            label=(
+                f"{label}" + rf"(AUC${{\approx}}${np.round(area, 3)})"
+                if writeout_auc
+                else f"{label}"
+            ),
             color=color,
         )
     plt.xlabel(x_label)
@@ -171,9 +177,9 @@ def plot_roc(
     plt.grid(which="major", alpha=0.95, color="black")
     title = ""
     if dataset_label:
-        title+=f"{dataset_label} jets \n"
+        title += f"{dataset_label} jets \n"
     if pt_min and pt_max:
-        title+=f"{pt_text}, {eta_text}"
+        title += f"{pt_text}, {eta_text}"
     plt.legend(
         title=title,
         loc="best",

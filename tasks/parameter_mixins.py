@@ -1,6 +1,8 @@
 import luigi
 import law
+from rich.console import Console
 
+from utils.config.config_loader import ConfigLoader
 
 class DatasetDependency(object):
     dataset_version = luigi.Parameter(
@@ -93,6 +95,25 @@ class TrainingDependency(object):
 
         return parts
 
+    def set_device(self):
+        c = Console()
+        from utils.models.models import BTaggingModels
+        from torch.nn import Module
+        if issubclass(type(BTaggingModels(self.model_name, ConfigLoader.load_config(self.config))), Module):
+            import torch
+            if torch.cuda.is_available():
+                self.device = "cuda"
+                c.print(
+                    "[black on yellow]Warning:", "CUDA device available. Running on cuda!"
+                )
+            else:
+                self.device = "cpu"
+        else:
+            self.device = "cpu"
+            c.print(
+                "[black on yellow]Warning:", "No CUDA device available. Running on cpu..."
+            )
+
 
 class AttackDependency(object):
 
@@ -123,6 +144,10 @@ class AttackDependency(object):
         default=0.02,
         description="Only use in combination with attack==jetfool. Used to prevent vanishing updates.",
     )
+    attack_uncertainty = luigi.FloatParameter(
+        default=1.0,
+        description="Only use in combination with attack==optimizer. Sets the allowed and scaled global uncertainty for input features.",
+    )
 
     def store_parts(self):
         parts = super().store_parts()
@@ -133,6 +158,8 @@ class AttackDependency(object):
             parts += ("iterations_{}".format(self.attack_iterations),)
         if self.attack == "jetfool":
             parts += ("overshoot_{}".format(self.attack_overshoot),)
+        if self.attack == "optimizer":
+            parts += ("uncertainty_{}".format(self.attack_uncertainty),)
 
         return parts
 
@@ -166,6 +193,10 @@ class TestAttackDependency(object):
         default=0.02,
         description="Only use in combination with attack==jetfool. Used to prevent vanishing updates.",
     )
+    test_attack_uncertainty = luigi.FloatParameter(
+        default=1.0,
+        description="Only use in combination with attack==optimizer. Sets the allowed and scaled global uncertainty for input features.",
+    )
 
     def store_parts(self):
         parts = super().store_parts()
@@ -174,8 +205,9 @@ class TestAttackDependency(object):
         if self.test_attack_magnitude > 0.0:
             parts += ("test_epsilon_{}".format(self.test_attack_magnitude),)
             parts += ("test_iterations_{}".format(self.test_attack_iterations),)
-
-        if self.attack == "jetfool":
+        if self.test_attack == "jetfool":
             parts += ("test_overshoot_{}".format(self.test_attack_overshoot),)
+        if self.test_attack == "optimizer":
+            parts += ("uncertainty_{}".format(self.test_attack_uncertainty),)
 
         return parts

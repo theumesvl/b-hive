@@ -46,6 +46,7 @@ class ROCCurveTask(
 
     def run(self):
         os.makedirs(self.local_path(), exist_ok=True)
+        self.set_device()
         config = ConfigLoader.load_config(self.config)
 
         predictions = np.load(

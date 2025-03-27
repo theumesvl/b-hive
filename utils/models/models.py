@@ -1,6 +1,7 @@
 class ModelName:
     DeepJet = "DeepJet"
     DeepJetHLT = "DeepJetHLT"
+<<<<<<< HEAD
     MoDJet = "MoDJet"
     ParticleTransformer = "ParticleTransformer"
     ParticleTransformer2 = "ParticleTransformer2"
@@ -17,10 +18,14 @@ class ModelName:
     ParticleNet_InProHLT = "ParticleNet_InProHLT"
     UParticleNet_InProHLT = "UParticleNet_InProHLT"
     ParticleNetHION = "ParticleNetHION"
+    DeepJetTransformer = "DeepJetTransformer"
     L1TKerasDeepSet = "L1TKerasDeepSet"
     L1TTorchBase = "L1TTorchBase"
+    MoDJet = "MoDJet"
     PAIReDTagger = "PAIReDTagger"
     LZ4PAIReDTagger = "LZ4PAIReDTagger"
+    ParticleNet = "ParticleNet"
+    ParticleTransformer = "ParticleTransformer"
 
     
 def BTaggingModels(model: str = "", *args, **kwargs):

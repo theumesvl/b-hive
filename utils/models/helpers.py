@@ -1,6 +1,4 @@
-import numpy as np
 import torch
-import torch.nn as nn
 
 
 class InputConv(nn.Module):
@@ -10,8 +8,8 @@ class InputConv(nn.Module):
         self.norm = norm
         self.lin = torch.nn.Conv1d(in_chn, out_chn, kernel_size=1)
         self.bn = torch.nn.BatchNorm1d(out_chn, eps=0.001, momentum=0.6)
-        self.act = nn.ReLU()
-        self.dropout = nn.Dropout(dropout_rate)
+        self.act = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(dropout_rate)
 
     def forward(self, x):
         if self.norm:
@@ -21,14 +19,14 @@ class InputConv(nn.Module):
         return x
 
 
-class LinLayer(nn.Module):
+class LinLayer(torch.nn.Module):
     def __init__(self, in_chn, out_chn, dropout_rate=0.1, **kwargs):
         super(LinLayer, self).__init__(**kwargs)
 
         self.lin = torch.nn.Linear(in_chn, out_chn)
         self.bn = torch.nn.BatchNorm1d(out_chn, eps=0.001, momentum=0.6)
-        self.act = nn.ReLU()
-        self.dropout = nn.Dropout(dropout_rate)
+        self.act = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(dropout_rate)
 
     def forward(self, x):
         x = self.dropout(self.bn(self.act(self.lin(x))))
@@ -81,6 +79,7 @@ class InputProcess(nn.Module):
         return cpf, npf, vtx
 
 
+<<<<<<< HEAD
 class InputProcess_HLT(nn.Module):
     def __init__(self, 
                  cpf_conv,
@@ -92,6 +91,11 @@ class InputProcess_HLT(nn.Module):
         
         cpf_conv_full = cpf_conv.copy()
         vtx_conv_full = vtx_conv.copy()
+=======
+class MoDInputProcess(torch.nn.Module):
+    def __init__(self, **kwargs):
+        super(MoDInputProcess, self).__init__(**kwargs)
+>>>>>>> master
 
         self.cpf_bn = torch.nn.BatchNorm1d(cpf_conv_full[0], eps=0.001, momentum=0.6)
         self.cpf_conv = nn.ModuleList([InputConv(cpf_conv_full[i], cpf_conv_full[i+1]) for i in range(len(cpf_conv_full) - 2)])
@@ -131,3 +135,28 @@ class DenseClassifier(nn.Module):
         
         return x
 
+
+class MoDDenseClassifier(torch.nn.Module):
+    def __init__(self, **kwargs):
+        super(MoDDenseClassifier, self).__init__(**kwargs)
+
+        self.LinLayer1 = LinLayer(268, 200)
+        self.LinLayer2 = LinLayer(200, 100)
+        self.LinLayer3 = LinLayer(100, 100)
+        self.LinLayer4 = LinLayer(100, 100)
+        self.LinLayer5 = LinLayer(100, 100)
+        self.LinLayer6 = LinLayer(100, 100)
+        self.LinLayer7 = LinLayer(100, 100)
+        self.LinLayer8 = LinLayer(100, 100)
+
+    def forward(self, x):
+        x = self.LinLayer1(x)
+        x = self.LinLayer2(x)
+        x = self.LinLayer3(x)
+        x = self.LinLayer4(x)
+        x = self.LinLayer5(x)
+        x = self.LinLayer6(x)
+        x = self.LinLayer7(x)
+        x = self.LinLayer8(x)
+
+        return x

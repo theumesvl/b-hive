@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+=======
+import law
+>>>>>>> master
 from tasks.base import BaseTask
 from tasks.dataset import DatasetConstructorTask
 from tasks.training import TrainingTask
@@ -69,6 +73,7 @@ class InferenceTask(
 
     def run(self):
         DataLoader, torch, np = import_libraries()
+        self.set_device()
         # create directory
         self.output()["prediction"].parent.touch()
         config = ConfigLoader.load_config(self.config)
@@ -95,7 +100,7 @@ class InferenceTask(
 
         # Picking attack
         print(
-            rf"Will apply {self.test_attack} attack with epsilon={self.test_attack_magnitude} (individual attack magnitude: {self.test_attack_individual_factors}) and {self.test_attack_iterations} iterations."
+            rf"Applying {self.test_attack} attack (attack_magnitude={self.test_attack_magnitude}, n_iterations={self.test_attack_iterations}, attack_uncertainty={self.test_attack_uncertainty})."
         )
         epsilon_dir = (
             self.input()["test_dataset"]["file_list"].path.strip("processed_files.txt")
@@ -120,7 +125,10 @@ class InferenceTask(
             number_classes=len(model.classes),
             overshoot=self.test_attack_overshoot,
             epsilon_dir=epsilon_dir,
+            store_path=self.local_path(""),
+            uncertainty=self.test_attack_uncertainty,
         )
+        attack = torch.compile(attack, mode="max-autotune")
 
         print("Loading Dataset")
         files = self.input()["test_dataset"]["file_list"].load().split("\n")

@@ -85,3 +85,5 @@ printf "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 printf "++                                GREAT SUCCESS!!!                                           ++\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+echo "begin teardown of old tests"
+echo "a" | law run ROCCurveTask --dataset-version $test_version --training-version $test_version --config PAIReD_ParT_cls --model-name PAIReDTagger --epochs 1 --batch-size 512 --attack pgd --attack-magnitude 1.0 --test-dataset-version $test_version --remove-output -1

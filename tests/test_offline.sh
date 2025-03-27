@@ -16,8 +16,6 @@ if [ -z "$TESTDIRECTORY" ]; then
 fi
 
 # Ensure data directory exists
-mkdir -p "$TESTDIRECTORY"
-mkdir -p "$TESTDIRECTORY/data"
 mkdir -p "$TESTDIRECTORY/data/offline"
 DEST_FILE="$TESTDIRECTORY/data/offline/ntuple_merged_0.root"
 
@@ -183,4 +181,3 @@ printf "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 printf "++                                GREAT SUCCESS!!!                                           ++\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
-

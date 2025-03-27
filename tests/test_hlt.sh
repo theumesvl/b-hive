@@ -15,9 +15,6 @@ if [ -z "$TESTDIRECTORY" ]; then
     exit 1
 fi
 
-# Ensure data directory exists
-mkdir -p "$TESTDIRECTORY"
-mkdir -p "$TESTDIRECTORY/data"
 mkdir -p "$TESTDIRECTORY/data/HLT"
 DEST_FILE="$TESTDIRECTORY/data/HLT/hlt_test_TT.root"
 
@@ -41,6 +38,7 @@ if [ ! -f $DEST_FILE ]; then
     fi
 fi
 
+<<<<<<< HEAD
 # Create filelist
 FILELIST="$TESTDIRECTORY/data/HLT/filelist.txt"
 echo "$DEST_FILE" > "$FILELIST"
@@ -154,3 +152,6 @@ printf "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 printf "++                                GREAT SUCCESS!!!                                           ++\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+echo "begin teardown of old tests"
+echo "a" | law run ROCCurveTask --training-version $test_version --dataset-version $test_version --config hlt_run3 --model-name DeepJetHLT --epochs 1 --test-dataset-version $test_version --remove-output -1
+echo "a" | law run ROCCurveTask --training-version $test_version --dataset-version $test_version --config hlt_run3 --model-name DeepJetHLT --epochs 1 --test-dataset-version $test_version --test-attack-magnitude 1.0 --test-attack pgd --remove-output -1
