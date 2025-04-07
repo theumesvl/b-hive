@@ -25,7 +25,7 @@ DEST_FILE="$TESTDIRECTORY/data/MoD/ntuple_merged_0.root"
 if [ ! -f $DEST_FILE ]; then
     echo "Copying test file to: $DEST_FILE"
     # Define the source file path
-    SOURCE_FILE=/eos/cms/store/group/phys_btag/ParT_2024/merged_mc/ntuple_merged_0.root
+    SOURCE_FILE=/eos/cms/store/group/phys_btag/ParticleEdge/big_dataset/merged_TT/ntuple_merged_0.root
     if [ -f "$SOURCE_FILE" ]; then
         echo "File exists locally."
         cp $SOURCE_FILE $DEST_FILE
@@ -56,7 +56,7 @@ done
 echo "Begining test..."
 
 printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
-printf "+         Test 1:  mod_offline_run3 + MoDJet + batch_lin_decay + AdamW + attack (pgd) + test_attack (pgd)                   +\n"
+printf "+         Test 1:  mod_offline_run3 + MoDJet + batch_lin_decay + AdamW + attack (pgd) + test_attack (jetfool)                   +\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
@@ -68,13 +68,13 @@ time law run ROCCurveTask \
         --test-filelist $FILELIST  \
         --DatasetConstructorTask-chunk-size 10000 \
         --model-name MoDJet \
-        --epochs 1 \
+        --epochs 2 \
         --batch-size 512 \
         --lr-scheduler batch_lin_decay \
         --lr-decay-factor 0.01 \
         --attack pgd \
         --attack-magnitude 0.05 \
-        --test-attack pgd \
+        --test-attack jetfool \
         --test-attack-magnitude 0.05 \
         --optimizer AdamW \
         --betas 0.9,0.999 

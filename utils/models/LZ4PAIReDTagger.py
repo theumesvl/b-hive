@@ -715,7 +715,7 @@ class LZ4PAIReDTagger(Classifier_base):
         'sv_dphi2',
     ]
 
-    feature_keys = [global_features,cpf_vectors, cpf_candidates, sv_features, sv_vectors]
+    feature_keys = [global_features, cpf_vectors, cpf_candidates, sv_features, sv_vectors]
 
     integer_features = {
             "cpf_candidates": ["Cpfcan_VTX_ass", "Cpfcan_puppiw", "Cpfcan_chi2", "Cpfcan_quality"],
@@ -819,7 +819,7 @@ class LZ4PAIReDTagger(Classifier_base):
         return output
 
     
-    def create_feature_lengths(self):
+    def create_feature_shapes(self):
         # Constructions of input shape from config.yaml file
         self.input_dims = [
             (self.n_cpf, len(self.cpf_candidates)), 
@@ -827,16 +827,15 @@ class LZ4PAIReDTagger(Classifier_base):
             (self.n_sv,  len(self.sv_features)),
             (self.n_sv,  len(self.sv_vectors)),
         ]
-        
         feature_edges = []
         v = 0
         for dim in self.input_dims:
             v += dim[0]*dim[1]
             feature_edges.append(v)
     
-        feature_edges = torch.Tensor(feature_edges).int()    
-        feature_lengths = feature_edges[1:] - feature_edges[:-1]
-        self.feature_lengths = torch.cat((feature_edges[:1], feature_lengths))
+        self.feature_edges = torch.Tensor(feature_edges).int()    
+        feature_lengths = self.feature_edges[1:] - self.feature_edges[:-1]
+        self.feature_lengths = torch.cat((self.feature_edges[:1], feature_lengths))
     
     def get_inpt(self, x, truth=None, loss_fn=None, attack=None, device='cpu'):
 
@@ -867,7 +866,6 @@ class LZ4PAIReDTagger(Classifier_base):
                 truth.type(torch.LongTensor).to(device),
                 self,
                 loss_fn,
-                device,
             )
         
         return (cpf_features.detach(), cpf_vectors.detach(), sv_features.detach(), sv_vectors.detach()), truth
@@ -927,8 +925,8 @@ class LZ4PAIReDTagger(Classifier_base):
             bb_veto = (truth != 0) & (summed_jets != 0)
             cc_veto = (truth != 1) & (summed_jets != 0)
             ll_veto = (truth != 2) & (summed_jets != 0)
-            no_veto1 = np.ones(bb_veto.shape, dtype=np.bool)
-            no_veto2 = np.ones(cc_veto.shape, dtype=np.bool)
+            no_veto1 = np.ones(bb_veto.shape, dtype=bool)
+            no_veto2 = np.ones(cc_veto.shape, dtype=bool)
 
             labels = ["bbvsll", "bbvscc", "ccvsbb", "ccvsll", "bbvsall", "ccvsall"]
             discs = [bbvsll, bbvscc, ccvsbb, ccvsll, bbvsall, ccvsall]

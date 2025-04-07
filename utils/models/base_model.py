@@ -435,7 +435,7 @@ class Classifier_base(nn.Module):
         return losses/(b+1), float(accuracy), elapsed_column.elapsed_time
 
 
-    def _subselect_features(self, tensor, name_fts):
+    def _subselect_features(self, tensor, name_fts, custom_name_fts):
         """
         Subselects features from a tensor based on the model's feature list or the config.
 
@@ -448,7 +448,8 @@ class Classifier_base(nn.Module):
         """
         if hasattr(self, name_fts):
             model_features = getattr(self, name_fts)
-            indices = [self.config.get(name_fts,[]).index(f) for f in model_features]
+            all_fts = self.config.get(name_fts,[]) + [list(d.keys())[0] for d in self.config.get(custom_name_fts,[])]
+            indices = [all_fts.index(f) for f in model_features]
         else:
             indices = list(range(tensor.size(-1)))  # Default to all features if not specified
         return tensor.index_select(dim=-1, index=torch.tensor(indices, device=tensor.device, dtype=torch.long))
@@ -478,10 +479,10 @@ class Classifier_base(nn.Module):
         vtx = vtx.reshape(vtx.shape[0], self.input_dims[3][0], -1)
 
         # Subselect features
-        glob = self._subselect_features(glob, "global_features")
-        cpf = self._subselect_features(cpf, "cpf_candidates")
-        npf = self._subselect_features(npf, "npf_candidates")
-        vtx = self._subselect_features(vtx, "vtx_features")
+        glob = self._subselect_features(glob, "global_features", "global_custom_features")
+        cpf = self._subselect_features(cpf, "cpf_candidates", "cpf_custom_features")
+        npf = self._subselect_features(npf, "npf_candidates", "npf_custom_features")
+        vtx = self._subselect_features(vtx, "vtx_features", "vtx_custom_features")
 
         if attack is not None:
             (

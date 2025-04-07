@@ -83,8 +83,14 @@ class ROCCurveTask(
             eta_min = config.get(proc, {"eta_min": -np.inf}).get("eta_min", -np.inf)
             eta_max = config.get(proc, {"eta_max": np.inf}).get("eta_max", np.inf)
 
-            pt_mask = np.logical_and(pts > pt_min, pts < pt_max)
-            eta_mask = np.logical_and(etas > eta_min, etas < eta_max)
+            if not (pt_min == 0 and pt_max == np.inf):
+                pt_mask = np.logical_and(pts > pt_min, pts < pt_max)
+            else:
+                pt_mask = np.ones_like(proc_mask)
+            if not (eta_min == -np.inf and eta_max == np.inf):
+                eta_mask = np.logical_and(etas > eta_min, etas < eta_max)
+            else:
+                eta_mask = np.ones_like(proc_mask)
             mask = np.logical_and.reduce([proc_mask, pt_mask, eta_mask])
 
             discs, truths, vetos, labels, xlabels, ylabels = model.calculate_roc_list(
