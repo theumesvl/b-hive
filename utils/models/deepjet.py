@@ -1,16 +1,16 @@
 import numpy as np
-<<<<<<< HEAD
 import torch
 import torch.nn as nn
 from scipy.special import softmax
 
 from utils.models.base_model import Classifier_base
-from utils.models.helpers import DenseClassifier, InputProcess, InputProcess_HLT
-
-torch.multiprocessing.set_sharing_strategy("file_system")
-
-class DeepJet(Classifier_base):
-=======
+from utils.models.helpers import (
+    DenseClassifier, 
+    InputProcess, 
+    InputProcess_HLT,
+    MoDDenseClassifier,
+    MoDInputProcess,
+)
 from rich.progress import (
     BarColumn,
     Progress,
@@ -19,31 +19,13 @@ from rich.progress import (
     TimeElapsedColumn,
     TimeRemainingColumn,
 )
-from scipy.special import softmax
-import torch
 from tqdm import tqdm
-from utils.models.abstract_base_models import Classifier
-from utils.models.helpers import (
-    DenseClassifier,
-    InputProcess,
-    MoDDenseClassifier,
-    MoDInputProcess,
-)
 from utils.plotting.termplot import terminal_roc
-from utils.torch import DeepJetDataset
-
 
 torch.multiprocessing.set_sharing_strategy("file_system")
 
-
-class DeepJet(Classifier, torch.nn.Module):
-    n_cpf = 25
-    n_npf = 25
-    n_vtx = 5
-    datasetClass = DeepJetDataset
-    optimizerClass = torch.optim.Adam
->>>>>>> master
-
+class DeepJet(Classifier_base):
+    
     classes = {
         "b": ["isB"],
         "bb": ["isBB", "isGBB"],
@@ -86,21 +68,7 @@ class DeepJet(Classifier, torch.nn.Module):
         dense_clas_dim_full = [sum(lstm_dim) + global_dim] + dense_clas_dim
         self.DenseClassifier = DenseClassifier(dense_clas_dim_full)
 
-<<<<<<< HEAD
         self.global_bn = torch.nn.BatchNorm1d(global_dim, eps=0.001, momentum=0.6)
-=======
-    def __init__(self, feature_edges=[15, 415, 565, 625], **kwargs):
-        super(DeepJet, self).__init__(**kwargs)
-
-        self.feature_edges = np.array(feature_edges)
-
-        self.loss_fn = torch.nn.CrossEntropyLoss(reduction="none")
-
-        self.InputProcess = InputProcess()
-        self.DenseClassifier = DenseClassifier()
-
-        self.global_bn = torch.nn.BatchNorm1d(15, eps=0.001, momentum=0.6)
->>>>>>> master
         self.cpf_lstm = torch.nn.LSTM(
             input_size=cpf_conv[-1], hidden_size=lstm_dim[0], num_layers=n_layers_lstm, batch_first=True
         )
@@ -119,39 +87,12 @@ class DeepJet(Classifier, torch.nn.Module):
         self.npf_dropout = torch.nn.Dropout(0.1)
         self.vtx_dropout = torch.nn.Dropout(0.1)
 
-<<<<<<< HEAD
         self.Linear = nn.Linear(100, len(self.classes))
         
     def forward(self, inpt):
          
         global_features, cpf_features, npf_features, vtx_features = inpt[0], inpt[1], inpt[2], inpt[3]
-        
-=======
-        self.Linear = torch.nn.Linear(100, len(self.classes))
 
-        self.glob_integers = torch.tensor([2, 3, 4, 5, 8, 13, 14])
-        self.cpf_integers = torch.tensor([12, 13, 14, 15])
-        self.npf_integers = torch.tensor([2])
-        self.vtx_integers = torch.tensor([3])
-        self.integers = [
-            self.glob_integers,
-            self.cpf_integers,
-            self.npf_integers,
-            self.vtx_integers,
-        ]
-        self.glob_defaults = torch.tensor([0])
-        self.cpf_defaults = torch.tensor([0])
-        self.npf_defaults = torch.tensor([0])
-        self.vtx_defaults = torch.tensor([0])
-        self.defaults = [
-            self.glob_defaults,
-            self.cpf_defaults,
-            self.npf_defaults,
-            self.vtx_defaults,
-        ]
-
-    def forward(self, global_features, cpf_features, npf_features, vtx_features):
->>>>>>> master
         global_features = self.global_bn(global_features)
         
         cpf, npf, vtx = self.InputProcess(cpf_features, npf_features, vtx_features)
@@ -232,7 +173,7 @@ class DeepJetHLT(Classifier_base):
         "npf_candidates": [],
         "vtx_features": ["jet_sv_ntrack"],
     }
-
+    
     def get_inpt(self, x, truth=None, loss_fn=None, attack=None, device='cpu'):
 
         glob, cpf, npf, vtx = x.split(self.feature_lengths.tolist(), dim=1)
@@ -248,63 +189,7 @@ class DeepJetHLT(Classifier_base):
         npf = self._subselect_features(npf, "npf_candidates")
         vtx = self._subselect_features(vtx, "vtx_features")
 
-<<<<<<< HEAD
         if attack is not None:
-=======
-            torch.save(
-                {
-                    "epoch": t,
-                    "model_state_dict": self.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "loss_train": loss_train,
-                    "acc_train": acc_train,
-                    "loss_val": loss_val,
-                    "acc_val": acc_val,
-                },
-                "{}/model_{}.pt".format(directory, t),
-            )
-
-            if np.mean(loss_validation) < best_loss_val:
-                best_loss_val = np.mean(loss_validation)
-                torch.save(
-                    {
-                        "epoch": t,
-                        "model_state_dict": self.state_dict(),
-                        "optimizer_state_dict": optimizer.state_dict(),
-                        "loss_train": loss_train,
-                        "acc_train": acc_train,
-                        "loss_val": loss_val,
-                        "acc_val": acc_val,
-                    },
-                    "{}/best_model.pt".format(directory),
-                )
-
-        return (
-            loss_train,
-            loss_val,
-            acc_train,
-            acc_val,
-        )
-
-    def predict_model(self, dataloader, device, attack=None):
-        self.eval()
-        kinematics = []
-        truths = []
-        processes = []
-        predictions = []
-        for (
-            global_features,
-            cpf_features,
-            npf_features,
-            vtx_features,
-            truth,
-            weight,
-            process,
-        ) in tqdm(dataloader):
-            # append jet_pt and jet_eta
-            # this should be done differenlty in the future... avoid array slicing with magic numbers!
-            torch.backends.cudnn.enabled = False
->>>>>>> master
             (
                 glob,
                 cpf,
@@ -313,9 +198,8 @@ class DeepJetHLT(Classifier_base):
                 truth,
             ) = attack(
                 [
-                    feature.float().to(device, non_blocking=True)
+                    feature.float().to(device)
                     for feature in [
-<<<<<<< HEAD
                         glob,
                         cpf,
                         npf,
@@ -323,18 +207,8 @@ class DeepJetHLT(Classifier_base):
                         ]
                     ],
                 truth.type(torch.LongTensor).to(device),
-=======
-                        global_features,
-                        cpf_features,
-                        npf_features,
-                        vtx_features,
-                    ]
-                ],
-                truth.type(torch.LongTensor).to(device, non_blocking=True),
->>>>>>> master
                 self,
                 loss_fn,
-                device,
             ) 
         
         return (glob.detach(), cpf.detach(), npf.detach(), vtx.detach()), truth
@@ -351,7 +225,6 @@ class DeepJetHLT(Classifier_base):
         
         super().__init__(**kwargs)
 
-<<<<<<< HEAD
         self.config = config
 
         _, cpf_dim, _, vtx_dim = self.all_model_features_length()  
@@ -360,18 +233,10 @@ class DeepJetHLT(Classifier_base):
         vtx_conv = [vtx_dim] + vtx_conv
         
         self.InputProcess = InputProcess_HLT(cpf_conv, vtx_conv)
-=======
-        predictions = np.concatenate(predictions)
-        kinematics = np.concatenate(kinematics)
-        truths = np.concatenate(truths)
-        processes = np.concatenate(processes)
-        return predictions, truths, kinematics, processes
->>>>>>> master
 
         dense_clas_dim_full = [sum(lstm_dim)] + dense_clas_dim
         self.DenseClassifier = DenseClassifier(dense_clas_dim_full)
 
-<<<<<<< HEAD
         self.cpf_lstm = torch.nn.LSTM(
             input_size=cpf_conv[-1], hidden_size=lstm_dim[0], num_layers=n_layers_lstm, batch_first=True
         )
@@ -381,96 +246,15 @@ class DeepJetHLT(Classifier_base):
 
         self.cpf_bn = torch.nn.BatchNorm1d(lstm_dim[0], eps=0.001, momentum=0.6)
         self.vtx_bn = torch.nn.BatchNorm1d(lstm_dim[1], eps=0.001, momentum=0.6)
-=======
-        with Progress(
-            TextColumn("{task.description}"),
-            TimeElapsedColumn(),
-            BarColumn(bar_width=None),
-            TaskProgressColumn(),
-            TimeRemainingColumn(),
-            TextColumn("0/? its"),
-            expand=True,
-        ) as progress:
-            N = 0
-            task = progress.add_task("Training...", total=dataloader.nits_expected)
-            print("entering traing loop")
-            for (
-                global_features,
-                cpf_features,
-                npf_features,
-                vtx_features,
-                truth,
-                weight,
-                process,
-            ) in dataloader:
-                # We select either cuda float16 mixed precision or cpu float32 as LSTMs does not accept bfloat16
-                with torch.autocast(
-                    device_type=device, enabled=True if device == "cuda" else False
-                ):
-                    (
-                        global_features,
-                        cpf_features,
-                        npf_features,
-                        vtx_features,
-                        truth,
-                    ) = attack(
-                        [
-                            feature.float().to(device, non_blocking=True)
-                            for feature in [
-                                global_features,
-                                cpf_features,
-                                npf_features,
-                                vtx_features,
-                            ]
-                        ],
-                        truth.type(torch.LongTensor).to(device, non_blocking=True),
-                        self,
-                        self.loss_fn,
-                    )
-
-                    pred = self.forward(
-                        global_features,
-                        cpf_features,
-                        npf_features,
-                        vtx_features,
-                    )
-                    loss = self.loss_fn(pred, truth).mean()
->>>>>>> master
 
         self.cpf_dropout = nn.Dropout(0.1)
         self.vtx_dropout = nn.Dropout(0.1)
 
-<<<<<<< HEAD
         self.Linear = nn.Linear(100, len(self.classes))
         
     def forward(self, inpt):
          
         _, cpf_features, _, vtx_features = inpt[0], inpt[1], inpt[2], inpt[3]
-=======
-                    losses.append(loss.item())
-                    accuracy += (pred.argmax(1) == truth).type(torch.float).sum().item()
-                    N += len(pred)
-                    progress.update(
-                        task, advance=1, description=f"Training...   | Loss: {loss:.2f}"
-                    )
-                    progress.columns[-1].text_format = "{}/{} its".format(
-                        N // dataloader.batch_size,
-                        (
-                            "?"
-                            if dataloader.nits_expected == len(dataloader)
-                            else f"~{dataloader.nits_expected}"
-                        ),
-                    )
-                progress.update(task, completed=dataloader.nits_expected)
-        dataloader.nits_expected = N // dataloader.batch_size
-        accuracy /= N
-        print("  ", f"Average loss: {np.array(losses).mean():.4f}")
-        print("  ", f"Average accuracy: {float(100*accuracy):.4f}")
-        return losses, accuracy
->>>>>>> master
-
-        #print(f"cpf_features.shape = {cpf_features.shape}")
-        #print(f"vtx_features.shape = {vtx_features.shape}")
                 
         cpf, vtx = self.InputProcess(cpf_features, vtx_features)
         
@@ -480,82 +264,10 @@ class DeepJetHLT(Classifier_base):
         vtx = self.vtx_lstm(torch.flip(vtx, dims=[1]))[0][:, -1]
         vtx = self.vtx_dropout(self.vtx_bn(vtx))
 
-<<<<<<< HEAD
         fts = torch.cat((cpf, vtx), dim=1)
         fts = self.DenseClassifier(fts)
 
         output = self.Linear(fts)
-=======
-        with Progress(
-            TextColumn("{task.description}"),
-            TimeElapsedColumn(),
-            BarColumn(bar_width=None),
-            TaskProgressColumn(),
-            TimeRemainingColumn(),
-            TextColumn("0/? its"),
-            expand=True,
-        ) as progress:
-            N = 0
-            task = progress.add_task("Validation...", total=dataloader.nits_expected)
-            for (
-                global_features,
-                cpf_features,
-                npf_features,
-                vtx_features,
-                truth,
-                weight,
-                process,
-            ) in dataloader:
-                with torch.no_grad():
-                    pred = self.forward(
-                        *[
-                            feature.float().to(device, non_blocking=True)
-                            for feature in [
-                                global_features,
-                                cpf_features,
-                                npf_features,
-                                vtx_features,
-                            ]
-                        ]
-                    )
-                    loss = self.loss_fn(
-                        pred, truth.type(torch.LongTensor).to(device, non_blocking=True)
-                    ).mean()
-                    losses.append(loss.item())
-
-                    accuracy += (
-                        (pred.argmax(1) == truth.to(device, non_blocking=True))
-                        .type(torch.float)
-                        .sum()
-                        .item()
-                    )
-                    predictions = np.append(predictions, pred.to("cpu").numpy(), axis=0)
-                    truths = np.append(truths, truth.to("cpu").numpy(), axis=0)
-                    processes = np.append(processes, process.to("cpu").numpy(), axis=0)
-                N += global_features.size(dim=0)
-                progress.update(
-                    task, advance=1, description=f"Validation... | Loss: {loss:.2f}"
-                )
-                progress.columns[-1].text_format = "{}/{} its".format(
-                    N // dataloader.batch_size,
-                    (
-                        "?"
-                        if dataloader.nits_expected == len(dataloader)
-                        else f"~{dataloader.nits_expected}"
-                    ),
-                )
-            progress.update(task, completed=dataloader.nits_expected)
-        dataloader.nits_expected = N // dataloader.batch_size
-        accuracy /= N
-        print("  ", f"Validation loss: {np.array(losses).mean():.4f}")
-        print("  ", f"Validation accuracy: {float(accuracy):.4f}")
-
-        if verbose:
-            print("Printing terminal ROC")
-            terminal_roc(predictions, truths, title="Validation ROC")
-
-        return losses, float(accuracy)
->>>>>>> master
 
         return output
         
@@ -621,6 +333,7 @@ class DeepJetHLT(Classifier_base):
         ylabels = ["light mis-id.", "c mis-id", "b mis-id.", "light mis-id.", "mis-id.", "gluons mis-id."]
 
         return discs, truths, vetos, labels, xlabels, ylabels
+        
 
 class MoDJet(DeepJet):
 
@@ -631,9 +344,6 @@ class MoDJet(DeepJet):
         "c": ["isC", "isCC", "isGCC"],
         "uds": ["isU", "isD", "isS"],
         "g": ["isG"],
-<<<<<<< HEAD
-    }
-=======
     }
 
     global_features = [
@@ -712,58 +422,3 @@ class MoDJet(DeepJet):
         "sv_costhetasvpv",
         "sv_enratio",
     ]
-
-    feature_keys = [global_features, cpf_candidates, npf_candidates, vtx_features]
-
-    def __init__(self, feature_edges=[18, 543, 818, 893], **kwargs):
-        super(MoDJet, self).__init__(**kwargs)
-
-        self.feature_edges = np.array(feature_edges)
-
-        self.loss_fn = torch.nn.CrossEntropyLoss(reduction="none")
-
-        self.InputProcess = MoDInputProcess()
-        self.DenseClassifier = MoDDenseClassifier()
-
-        self.global_bn = torch.nn.BatchNorm1d(18, eps=0.001, momentum=0.6)
-        self.cpf_lstm = torch.nn.LSTM(
-            input_size=8, hidden_size=150, num_layers=1, batch_first=True
-        )
-        self.npf_lstm = torch.nn.LSTM(
-            input_size=4, hidden_size=50, num_layers=1, batch_first=True
-        )
-        self.vtx_lstm = torch.nn.LSTM(
-            input_size=8, hidden_size=50, num_layers=1, batch_first=True
-        )
-
-        self.cpf_bn = torch.nn.BatchNorm1d(150, eps=0.001, momentum=0.6)
-        self.npf_bn = torch.nn.BatchNorm1d(50, eps=0.001, momentum=0.6)
-        self.vtx_bn = torch.nn.BatchNorm1d(50, eps=0.001, momentum=0.6)
-
-        self.cpf_dropout = torch.nn.Dropout(0.1)
-        self.npf_dropout = torch.nn.Dropout(0.1)
-        self.vtx_dropout = torch.nn.Dropout(0.1)
-
-        self.Linear = torch.nn.Linear(100, len(self.classes))
-
-        self.glob_integers = torch.tensor([5, 6, 7, 8, 11, 16, 17])
-        self.cpf_integers = torch.tensor([17, 18, 19, 20])
-        self.npf_integers = torch.tensor([7])
-        self.vtx_integers = torch.tensor([6])
-        self.integers = [
-            self.glob_integers,
-            self.cpf_integers,
-            self.npf_integers,
-            self.vtx_integers,
-        ]
-        self.glob_defaults = torch.tensor([0])
-        self.cpf_defaults = torch.tensor([0])
-        self.npf_defaults = torch.tensor([0])
-        self.vtx_defaults = torch.tensor([0])
-        self.defaults = [
-            self.glob_defaults,
-            self.cpf_defaults,
-            self.npf_defaults,
-            self.vtx_defaults,
-        ]
->>>>>>> master

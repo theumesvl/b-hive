@@ -1,11 +1,6 @@
 import law
 import luigi
 import os
-<<<<<<< HEAD
-=======
-from pathlib import Path
->>>>>>> master
-
 import torch
 import lz4.frame
 from torch.utils.data import DataLoader
@@ -27,7 +22,6 @@ from utils.models.models import BTaggingModels
 from utils.loss.LossFunctionLoader import LossFunctionLoader
 from utils.plotting.roc import plot_roc_list, plot_losses
 from torch.nn import Module
-
 
 def import_libraries():
     from torch.utils.data import DataLoader
@@ -147,7 +141,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
                 if issubclass(
                     type(
                         BTaggingModels(
-                            self.model_name, ConfigLoader.load_config(self.config).get("model_arguments", {})
+                            self.model_name, ConfigLoader.load_config(self.config)
                         )
                     ),
                     Module,
@@ -159,7 +153,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
                 if issubclass(
                     type(
                         BTaggingModels(
-                            self.model_name, ConfigLoader.load_config(self.config).get("model_arguments", {})
+                            self.model_name, ConfigLoader.load_config(self.config)
                         )
                     ),
                     Module,
@@ -181,7 +175,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         config = ConfigLoader.load_config(self.config)
 
         #print(f"Memory usage at beginning of TrainingTask(): {check_memory_usage():.4f} GiB")
-        
+
         os.makedirs(self.local_path(), exist_ok=True)
         print("Loading Dataset")
         files = self.input()["file_list"].load().split("\n")
@@ -257,10 +251,13 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             self.input()["file_list"].path.strip("processed_files.txt") + "epsilons/"
         )
 
-        feature_keys = [
-            config[name] if name in config.keys() else [] 
-            for name in ['global_features', 'cpf_candidates', 'npf_candidates', 'vtx_features']
-        ]
+        feature_keys = []
+        for name_fts in ['global_features', 'cpf_candidates', 'npf_candidates', 'vtx_features']:
+            if hasattr(model, name_fts):
+                feature_keys.append(getattr(model, name_fts))
+            else:
+                feature_keys.append(config[name_fts] if name_fts in config.keys() else [])
+             
         attack = pick_attack(
             attack=self.attack,
             device=self.device,
@@ -278,7 +275,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             store_path=self.local_path(""),
             uncertainty=self.attack_uncertainty,
         )
-        attack = torch.compile(attack, mode="max-autotune")
+        #attack = torch.compile(attack, mode="max-autotune")
 
         #print(f"Memory usage before datasets loading: {check_memory_usage():.4f} GiB")
         
@@ -422,13 +419,25 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             train_metrics=train_metrics,
             validation_metrics=validation_metrics,
             terminal_plot = self.terminal_plot,
+            torch_compile_mode = self.torch_compile_mode,
             #attack_magnitude=self.attack_magnitude,
             #attack_iterations=self.attack_iterations,
         )
         
-        if loss in train_metrics.keys():
-            plot_losses(train_metrics['loss'], validation_metrics['loss'], output_dir=self.local_path())
-        if acc in train_metrics.keys():
-            plot_accuracy(train_metrics['acc'], validation_metrics['acc'], output_dir=self.local_path())
-        
+        if 'loss' in train_metrics.keys():
+            plot_losses(
+                train_metrics['loss'], 
+                validation_metrics['loss'], 
+                self.local_path(), 
+                ran_epochs, 
+                self.epochs
+            )
+        if 'acc' in train_metrics.keys():
+            plot_accuracy(
+                train_metrics['acc'], 
+                validation_metrics['acc'], 
+                self.local_path(), 
+                ran_epochs, 
+                self.epochs
+            )
         print("Training finished.")

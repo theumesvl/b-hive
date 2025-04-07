@@ -526,7 +526,6 @@ class DeepJetTransformerHLT(Classifier_base):
                 truth.type(torch.LongTensor).to(device),
                 self,
                 loss_fn,
-                device,
             ) 
         
         return (glob.detach(), cpf.detach(), npf.detach(), vtx.detach()), truth
@@ -808,11 +807,12 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
         validation_metrics=None,
         class_weights=None,
         terminal_plot=False,
+        torch_compile_mode=None,
         **kwargs,
     ):
         
         if self.use_torch_compile:
-            self.compile_step = torch.compile(self.step, mode='max-autotune')
+            self.compile_step = torch.compile(self.step, mode=torch_compile_mode)
             
         scaler = torch.amp.GradScaler(device)
 

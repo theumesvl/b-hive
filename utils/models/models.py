@@ -1,7 +1,6 @@
 class ModelName:
     DeepJet = "DeepJet"
     DeepJetHLT = "DeepJetHLT"
-<<<<<<< HEAD
     MoDJet = "MoDJet"
     ParticleTransformer = "ParticleTransformer"
     ParticleTransformer2 = "ParticleTransformer2"

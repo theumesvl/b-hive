@@ -86,9 +86,9 @@ class Classifier_base(nn.Module):
             v += dim[0]*dim[1]
             feature_edges.append(v)
     
-        feature_edges = torch.Tensor(feature_edges).int()    
-        feature_lengths = feature_edges[1:] - feature_edges[:-1]
-        self.feature_lengths = torch.cat((feature_edges[:1], feature_lengths))
+        self.feature_edges = torch.Tensor(feature_edges).int()    
+        feature_lengths = self.feature_edges[1:] - self.feature_edges[:-1]
+        self.feature_lengths = torch.cat((self.feature_edges[:1], feature_lengths))
         
 
     def train_model(
@@ -108,11 +108,12 @@ class Classifier_base(nn.Module):
         train_metrics=None,
         validation_metrics=None,
         terminal_plot=False,
+        torch_compile_mode=None,
         **kwargs,
     ):
         
         if self.use_torch_compile:
-            self.compile_step = torch.compile(self.step, mode='max-autotune')
+            self.compile_step = torch.compile(self.step, mode=torch_compile_mode)
             
         scaler = torch.amp.GradScaler(device)
         
@@ -502,7 +503,6 @@ class Classifier_base(nn.Module):
                 truth.type(torch.LongTensor).to(device),
                 self,
                 loss_fn,
-                device,
             ) 
         
         return (glob.detach(), cpf.detach(), npf.detach(), vtx.detach()), truth

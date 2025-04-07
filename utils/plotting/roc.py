@@ -90,19 +90,19 @@ def calculate_roc(truth, discriminator, veto, output_directory, dataset_key, nam
     return fpr, tpr, area
 
 
-def plot_losses(train_loss, test_loss, output_dir=None, epochs=None):
+def plot_losses(train_loss, test_loss, output_dir, ran_epochs, nepochs):
     fig, ax = plt.subplots()
     ax.set_title("Losses")
     if train_loss is not None:
         ax.plot(
-            np.linspace(0, epochs, len(train_loss)),
+            np.arange(ran_epochs, nepochs),
             train_loss,
             label="Train",
             color="blue",
         )
     if test_loss is not None:
         ax.plot(
-            np.linspace(0, epochs, len(test_loss)),
+            np.arange(ran_epochs, nepochs),
             test_loss,
             label="Validation",
             color="orange",
@@ -112,6 +112,30 @@ def plot_losses(train_loss, test_loss, output_dir=None, epochs=None):
     ax.legend()
     fig.savefig(os.path.join(output_dir, "loss.pdf"))
     fig.savefig(os.path.join(output_dir, "loss.png"))
+
+
+def plot_accuracy(train_acc, test_acc, output_dir, ran_epochs, nepochs):
+    fig, ax = plt.subplots()
+    ax.set_title("Accuracy")
+    if train_acc is not None:
+        ax.plot(
+            np.arange(ran_epochs, nepochs),
+            train_acc,
+            label="Train",
+            color="blue",
+        )
+    if test_acc is not None:
+        ax.plot(
+            np.arange(ran_epochs, nepochs),
+            test_acc,
+            label="Validation",
+            color="orange",
+        )
+    ax.set_xlabel("Epochs")
+    ax.set_ylabel("Accuracy")
+    ax.legend()
+    fig.savefig(os.path.join(output_dir, "acc.pdf"))
+    fig.savefig(os.path.join(output_dir, "acc.png"))
 
 
 def plot_roc(

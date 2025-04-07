@@ -654,7 +654,7 @@ class ParticleTransformer(Classifier_base):
         self.num_enc_layers = num_enc
 
         _, cpf_dim, npf_dim, vtx_dim = self.all_model_features_length()
-        
+
         cpf_dim = cpf_dim - 4
         npf_dim = npf_dim - 4
         vtx_dim = vtx_dim - 4
@@ -771,7 +771,6 @@ class ParticleTransformerHLT(Classifier_base):
                 truth.type(torch.LongTensor).to(device),
                 self,
                 loss_fn,
-                device,
             ) 
         
         return (glob.detach(), cpf.detach(), npf.detach(), vtx.detach()), truth

@@ -38,7 +38,6 @@ if [ ! -f $DEST_FILE ]; then
     fi
 fi
 
-<<<<<<< HEAD
 # Create filelist
 FILELIST="$TESTDIRECTORY/data/HLT/filelist.txt"
 echo "$DEST_FILE" > "$FILELIST"
@@ -55,9 +54,9 @@ done
 
 echo "Begining testing..."
 
-printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
-printf "+      Test 1:  hlt_run3 + DeepJetHLT + epoch_lin_decay + AdamW + attack (pgd)                          +\n"
-printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
+printf "+      Test 1:  hlt_run3 + DeepJetHLT + epoch_lin_decay + AdamW + attacks (pgd) + torch.compile(default) + mixed precision                  +\n"
+printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
         --config hlt_run3 \
@@ -69,21 +68,22 @@ time law run ROCCurveTask \
         --test-filelist $FILELIST  \
         --model-name DeepJetHLT \
         --epochs 2 \
-        --batch-size 64 \
-        --attack pgd \
-        --attack-magnitude 0.1 \
-        --test-attack pgd \
-        --test-attack-magnitude 0.1 \
+        --batch-size 512 \
         --lr-scheduler epoch_lin_decay \
         --lr-decay-factor 0.1 \
         --optimizer AdamW \
-        --betas 0.95,0.999 
+        --mixed-precision True \
+        --use-torch-compile True \
+        --torch-compile-mode default \
+        --attack pgd \
+        --attack-magnitude 0.01 \
+        --test-attack pgd \
+        --test-attack-magnitude 0.01 
 
 
-
-printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
-printf "+      Test 2:  hlt_run3 + DeepJetTransformerHLT + batch_lin_decay + RAdam + attack (jetfool)           +\n"
-printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
+printf "+      Test 2:  hlt_run3 + DeepJetTransformerHLT + batch_lin_decay + RAdam + attacks (jetfool) + mixed precision                            +\n"
+printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
         --config hlt_run3 \
@@ -94,21 +94,21 @@ time law run ROCCurveTask \
         --test-filelist $FILELIST  \
         --model-name DeepJetTransformerHLT \
         --epochs 2 \
-        --batch-size 8 \
-        --attack jetfool \
-        --attack-magnitude 0.1 \
-        --test-attack jetfool \
-        --test-attack-magnitude 0.1 \
+        --batch-size 128 \
         --DatasetConstructorTask-chunk-size 10000 \
         --lr-scheduler batch_lin_decay \
-        --lr-decay-factor 0.1 \
+        --lr-decay-factor 0.01 \
         --optimizer RAdam \
-        --betas 0.95,0.999 
+        --mixed-precision True \
+        --attack jetfool \
+        --attack-magnitude 0.3 \
+        --test-attack jetfool \
+        --test-attack-magnitude 0.3 
 
 
-printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
-printf "+      Test 3:  hlt_run3 + UParticleNet_InProHLT + batch_lin_decay + Adam + no attack                   +\n"
-printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
+printf "+      Test 3:  hlt_run3 + UParticleNet_InProHLT + batch_lin_decay + Adam + no attacks + torch.compile(reduce-overhead)                     +\n"
+printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
         --config hlt_run3 \
@@ -125,7 +125,8 @@ time law run ROCCurveTask \
         --lr-scheduler batch_lin_decay \
         --lr-decay-factor 0.01 \
         --optimizer Adam \
-        --betas 0.95,0.999 
+        --use-torch-compile True \
+        --torch-compile-mode reduce-overhead 
 
 printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
 printf "+      Test 4:  hlt_run3 + GlobalParticleTransformerHLT + batch_cosine_warmup + AdamW                   +\n"
@@ -144,14 +145,10 @@ time law run ROCCurveTask \
         --DatasetConstructorTask-chunk-size 10000 \
         --lr-scheduler batch_cosine_warmup \
         --lr-decay-factor 0.1 \
-        --optimizer AdamW \
-        --betas 0.95,0.999 
+        --optimizer AdamW 
 
 printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
 printf "++                                GREAT SUCCESS!!!                                           ++\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
-echo "begin teardown of old tests"
-echo "a" | law run ROCCurveTask --training-version $test_version --dataset-version $test_version --config hlt_run3 --model-name DeepJetHLT --epochs 1 --test-dataset-version $test_version --remove-output -1
-echo "a" | law run ROCCurveTask --training-version $test_version --dataset-version $test_version --config hlt_run3 --model-name DeepJetHLT --epochs 1 --test-dataset-version $test_version --test-attack-magnitude 1.0 --test-attack pgd --remove-output -1

@@ -66,15 +66,14 @@ time law run ROCCurveTask \
         --test-filelist $FILELIST  \
         --model-name ParticleNet_InPro \
         --epochs 1 \
-        --batch-size 24 \
+        --batch-size 256 \
         --lr-scheduler epoch_lin_decay \
         --lr-decay-factor 0.1 \
         --optimizer Adam \
-        --mixed-precision False \
-        --betas 0.95,0.999  
+        --mixed-precision False
 
 printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
-printf "+         Test 2:  part_fp16_run3 + DeepJet + batch_cosine_warmup + AdamW + attack (pgd)                                        +\n"
+printf "+         Test 2:  part_fp16_run3 + DeepJet + batch_cosine_warmup + AdamW + attacks (pgd)                                       +\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
@@ -86,16 +85,15 @@ time law run ROCCurveTask \
         --test-filelist $FILELIST  \
         --model-name DeepJet \
         --epochs 2 \
-        --batch-size 24 \
+        --batch-size 512 \
         --lr-scheduler batch_cosine_warmup \
         --lr-decay-factor 0.1 \
         --optimizer AdamW \
         --attack pgd \
-        --attack-magnitude 0.1 \
-        --betas 0.9,0.999
+        --attack-magnitude 0.1
 
 printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
-printf "+         Test 3:  part_run3 + DeepJetTransformer + batch_cosine_warmup + AdamW + attack (pgd)                                        +\n"
+printf "+         Test 3:  part_run3 + DeepJetTransformer + batch_cosine_warmup + AdamW + attacks (pgd)                                 +\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
@@ -107,15 +105,14 @@ time law run ROCCurveTask \
         --test-filelist $FILELIST  \
         --model-name DeepJetTransformer \
         --epochs 1 \
-        --batch-size 512 \
+        --batch-size 128 \
         --optimizer AdamW \
         --attack pgd \
-        --attack-magnitude 0.1 \
-        --betas 0.9,0.999
+        --attack-magnitude 0.1
 
-printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
-printf "+         Test 4:  offline_run3 + ParticleTransformer + epoch_lin_decay + RAdam + attack (jetfool) + test_attack (minimizer)    +\n"
-printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+printf "\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
+printf "+         Test 4:  offline_run3 + ParticleTransformer + epoch_lin_decay + RAdam + attack (jetfool) + test_attack (optimizer) + torch.compile(default) + mixed-precision    +\n"
+printf "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
         --config offline_run3 \
@@ -126,19 +123,21 @@ time law run ROCCurveTask \
         --test-filelist $FILELIST  \
         --model-name ParticleTransformer \
         --epochs 1 \
-        --batch-size 24 \
+        --batch-size 1024 \
         --lr-scheduler epoch_lin_decay \
         --lr-decay-factor 0.01 \
         --optimizer RAdam \
         --attack jetfool \
         --attack-magnitude 0.1 \
-        --test-attack minimizer \
+        --test-attack optimizer \
         --test-attack-magnitude 0.15 \
-        --betas 0.95,0.999 
+        --use-torch-compile True \
+        --torch-compile-mode default \
+        --mixed-precision True
 
-printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
-printf "+         Test 5:  UParT_v0_run3 + UParT_v0 + batch_lin_decay + AdamW   --  attacks are not yet implemented for UParT           +\n"
-printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+printf "\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
+printf "+         Test 5:  UParT_v0_run3 + UParT_v0 + batch_lin_decay + AdamW + mixed-precision  --  attacks are not yet implemented for UParT     +\n"
+printf "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
         --config UParT_v0_run3 \
@@ -150,15 +149,15 @@ time law run ROCCurveTask \
         --model-name UParT_v0 \
         --loss-function CrossEntropyLogCosh \
         --epochs 1 \
-        --batch-size 24 \
+        --batch-size 128 \
         --lr-scheduler batch_lin_decay \
         --lr-decay-factor 0.01 \
         --optimizer AdamW \
-        --betas 0.9,0.999 
+        --mixed-precision True
 
-printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
-printf "+         Test 6:  part_run3 + ParticleTransformer2 + epoch_lin_decay + AdamW                                                       +\n"
-printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+printf "\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
+printf "+         Test 6:  part_run3 + ParticleTransformer2 + epoch_lin_decay + AdamW + torch.compile(reduce-overhead) + mixed-precision           +\n"
+printf "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
         --config part_run3 \
@@ -173,8 +172,9 @@ time law run ROCCurveTask \
         --lr-scheduler epoch_lin_decay \
         --lr-decay-factor 0.01 \
         --optimizer AdamW \
-        --mixed-precision False \
-        --betas 0.95,0.999          
+        --mixed-precision True \
+        --use-torch-compile True \
+        --torch-compile-mode reduce-overhead 
 
 printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"

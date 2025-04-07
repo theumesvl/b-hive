@@ -85,6 +85,10 @@ class TrainingDependency(object):
         default=False,
         description="Decides whether to use torch.compile for acceleration of PyTorch training. Default: False",
     )
+    torch_compile_mode = luigi.Parameter(
+        default="default",
+        description="The mode for torch.compile if used. Default: default",
+    )
     
     def store_parts(self):
         parts = super().store_parts()

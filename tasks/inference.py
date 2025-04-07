@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-=======
-import law
->>>>>>> master
 from tasks.base import BaseTask
 from tasks.dataset import DatasetConstructorTask
 from tasks.training import TrainingTask
@@ -128,7 +124,7 @@ class InferenceTask(
             store_path=self.local_path(""),
             uncertainty=self.test_attack_uncertainty,
         )
-        attack = torch.compile(attack, mode="max-autotune")
+        #attack = torch.compile(attack, mode="max-autotune")
 
         print("Loading Dataset")
         files = self.input()["test_dataset"]["file_list"].load().split("\n")

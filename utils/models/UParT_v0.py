@@ -730,11 +730,12 @@ class UParT_v0(Classifier_base):
         train_metrics=None,
         validation_metrics=None,
         terminal_plot=False,
+        torch_compile_mode=None,
         **kwargs,
     ):
         
         if self.use_torch_compile:
-            self.compile_step = torch.compile(self.step, mode='max-autotune')
+            self.compile_step = torch.compile(self.step, mode=torch_compile_mode)
             
         scaler = torch.amp.GradScaler(device)
 
