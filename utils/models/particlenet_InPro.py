@@ -535,10 +535,10 @@ class ParticleNetTaggerHLT(Classifier_base):
         vtx = vtx.reshape(vtx.shape[0], self.input_dims[3][0], -1)
 
         # Subselect features
-        glob = self._subselect_features(glob, "global_features")
-        cpf = self._subselect_features(cpf, "cpf_candidates")
-        npf = self._subselect_features(npf, "npf_candidates")
-        vtx = self._subselect_features(vtx, "vtx_features")
+        glob = self._subselect_features(glob, "global_features", "global_custom_features")
+        cpf = self._subselect_features(cpf, "cpf_candidates", "cpf_custom_features")
+        npf = self._subselect_features(npf, "npf_candidates", "npf_custom_features")
+        vtx = self._subselect_features(vtx, "vtx_features", "vtx_custom_features")
 
         if attack is not None:
             (
