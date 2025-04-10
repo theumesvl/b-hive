@@ -295,14 +295,17 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             weights = np.frombuffer(output_data, dtype=dtype).astype('float32')
         chunk_size = int(len(weights) / len(files))
         expected_train_number_of_batches = int(weights[: n_train * chunk_size].sum() // self.batch_size)
-        expected_val_number_of_batches   = int(weights[n_train * chunk_size:].sum() // self.batch_size)
+        if n_train == len(files):
+            expected_val_number_of_batches = expected_train_number_of_batches
+        else:
+            expected_val_number_of_batches   = int(weights[n_train * chunk_size:].sum() // self.batch_size)
         
         # Define the training and validation datasets
         training_data = datasetClass(
             training_files,
             model=model,
             config_truths=list(config['truths']),
-            all_number_of_samples=int(len(weights)*0.8),
+            all_number_of_samples=int(len(weights)*self.train_val_split),
             data_type="training",
             weighted_sampling=not (self.loss_weighting),
             device=self.device,
@@ -319,7 +322,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             validation_files,
             model=model,
             config_truths=list(config['truths']),
-            all_number_of_samples=len(weights) - int(len(weights)*0.8),
+            all_number_of_samples=len(weights) - int(len(weights)*self.train_val_split),
             data_type="validation",
             weighted_sampling=not (self.loss_weighting),
             device=self.device,

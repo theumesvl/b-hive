@@ -77,7 +77,7 @@ class DatasetConstructorTask(DatasetDependency, BaseTask):
             ),
             schema=BaseSchema,
             chunksize=self.chunk_size // 20,  # should be << chunk_size in order to get everything shuffled correctly
-            maxchunks=None if not (self.debug) else 10,
+            maxchunks=None if not (self.debug) else 20,
         )
 
         processorClass = ProcessorLoader(
@@ -136,7 +136,7 @@ class DatasetConstructorTask(DatasetDependency, BaseTask):
             self.local_path(),
             label="file",
             processor=config.get("processor", "PFCandidateAndVertexProcessing"),
-            chunk_size=self.chunk_size,
+            chunk_size=self.chunk_size if not self.debug else self.chunk_size//5,
             workers=self.coffea_worker,
             shuffle=True,
             histograms=np.array(histograms, dtype=np.float32),

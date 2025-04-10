@@ -204,9 +204,7 @@ class Attacks:
 
     # Code adapted from https://github.com/LTS4/DeepFool, based on https://arxiv.org/pdf/1511.04599.pdf
     def jetfool(self, inputs, truth, model, criterion):
-        batch_size = torch.tensor(
-            inputs[0].shape[0], device=self.device, pin_memory=True
-        )
+        batch_size = make_tensor(inputs[0].shape[0], self.device)
         prediction = model.forward(inputs)
         I = torch.argsort(prediction, dim=1, descending=True)
         label = I[:, 0]
@@ -343,9 +341,7 @@ class Attacks:
         softmax = torch.nn.Softmax(dim=-1)
         masks = self.create_default_integer_mask(inputs)
         min_loss = self.torch_inf
-        batch_size = torch.tensor(
-            inputs[0].shape[0], device=self.device, pin_memory=True
-        )
+        batch_size = make_tensor(inputs[0].shape[0], self.device)
 
         goal_score = (
             1

@@ -379,7 +379,7 @@ class Classifier_base(nn.Module):
             BarColumn(bar_width=None),
             TaskProgressColumn(),
             TimeRemainingColumn(),
-            TextColumn("0/? its"),
+            TextColumn(f"0/~{dataloader.nits_expected} its"),
             expand=True,
         ) as progress:
             N = 1

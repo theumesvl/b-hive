@@ -43,9 +43,9 @@ fi
 FILELIST="$TESTDIRECTORY/data/offline/filelist.txt"
 echo "$DEST_FILE" > "$FILELIST"
 
-for task in DatasetConstructorTask TrainingTask InferenceTask ROCCurveTask; do
+for task in DatasetConstructorTask TrainingTask InferenceTask ROCCurveTask; do #
     for config in part_run3 part_fp16_run3 offline_run3 UParT_v0_run3; do
-        path="$DATA_PATH/$task/$config/$test_version"
+        path="$DATA_PATH/$task/$config/debug/$test_version"
         if [ -d "$path" ]; then
             rm -r "$path"
         fi
@@ -58,6 +58,8 @@ printf "+         Test 1:  part_run3 + ParticleNet_InPro + epoch_lin_decay + Ada
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
+        --debug True \
+        --DatasetConstructorTask-chunk-size 1000 \
         --config part_run3 \
         --training-version $test_version \
         --dataset-version $test_version \
@@ -66,7 +68,7 @@ time law run ROCCurveTask \
         --test-filelist $FILELIST  \
         --model-name ParticleNet_InPro \
         --epochs 1 \
-        --batch-size 256 \
+        --batch-size 4 \
         --lr-scheduler epoch_lin_decay \
         --lr-decay-factor 0.1 \
         --optimizer Adam \
@@ -77,6 +79,8 @@ printf "+         Test 2:  part_fp16_run3 + DeepJet + batch_cosine_warmup + Adam
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
+        --debug True \
+        --DatasetConstructorTask-chunk-size 1000 \
         --config part_fp16_run3 \
         --training-version $test_version \
         --dataset-version $test_version \
@@ -85,7 +89,7 @@ time law run ROCCurveTask \
         --test-filelist $FILELIST  \
         --model-name DeepJet \
         --epochs 2 \
-        --batch-size 512 \
+        --batch-size 4 \
         --lr-scheduler batch_cosine_warmup \
         --lr-decay-factor 0.1 \
         --optimizer AdamW \
@@ -97,6 +101,8 @@ printf "+         Test 3:  part_run3 + DeepJetTransformer + batch_cosine_warmup 
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
+        --debug True \
+        --DatasetConstructorTask-chunk-size 1000 \
         --config part_run3 \
         --training-version $test_version \
         --dataset-version $test_version \
@@ -105,7 +111,7 @@ time law run ROCCurveTask \
         --test-filelist $FILELIST  \
         --model-name DeepJetTransformer \
         --epochs 1 \
-        --batch-size 128 \
+        --batch-size 4 \
         --optimizer AdamW \
         --attack pgd \
         --attack-magnitude 0.1
@@ -115,6 +121,8 @@ printf "+         Test 4:  offline_run3 + ParticleTransformer + epoch_lin_decay 
 printf "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
+        --debug True \
+        --DatasetConstructorTask-chunk-size 1000 \
         --config offline_run3 \
         --training-version $test_version \
         --dataset-version $test_version \
@@ -123,7 +131,7 @@ time law run ROCCurveTask \
         --test-filelist $FILELIST  \
         --model-name ParticleTransformer \
         --epochs 1 \
-        --batch-size 1024 \
+        --batch-size 4 \
         --lr-scheduler epoch_lin_decay \
         --lr-decay-factor 0.01 \
         --optimizer RAdam \
@@ -140,6 +148,8 @@ printf "+         Test 5:  UParT_v0_run3 + UParT_v0 + batch_lin_decay + AdamW + 
 printf "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
+        --debug True \
+        --DatasetConstructorTask-chunk-size 1000 \
         --config UParT_v0_run3 \
         --training-version $test_version \
         --dataset-version $test_version \
@@ -149,7 +159,7 @@ time law run ROCCurveTask \
         --model-name UParT_v0 \
         --loss-function CrossEntropyLogCosh \
         --epochs 1 \
-        --batch-size 128 \
+        --batch-size 4 \
         --lr-scheduler batch_lin_decay \
         --lr-decay-factor 0.01 \
         --optimizer AdamW \
@@ -160,6 +170,8 @@ printf "+         Test 6:  part_run3 + ParticleTransformer2 + epoch_lin_decay + 
 printf "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
+        --debug True \
+        --DatasetConstructorTask-chunk-size 1000 \
         --config part_run3 \
         --training-version $test_version \
         --dataset-version $test_version \
@@ -167,8 +179,8 @@ time law run ROCCurveTask \
         --test-dataset-version $test_version \
         --test-filelist $FILELIST  \
         --model-name ParticleTransformer2 \
-        --epochs 5 \
-        --batch-size 512 \
+        --epochs 3 \
+        --batch-size 4 \
         --lr-scheduler epoch_lin_decay \
         --lr-decay-factor 0.01 \
         --optimizer AdamW \

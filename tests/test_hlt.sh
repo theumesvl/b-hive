@@ -43,9 +43,9 @@ FILELIST="$TESTDIRECTORY/data/HLT/filelist.txt"
 echo "$DEST_FILE" > "$FILELIST"
 
 echo "Deleting old HLT tests."
-for task in DatasetConstructorTask TrainingTask InferenceTask ROCCurveTask; do
+for task in DatasetConstructorTask TrainingTask InferenceTask ROCCurveTask; do #DatasetConstructorTask
     for config in hlt_run3; do
-        path="$DATA_PATH/$task/$config/$test_version"
+        path="$DATA_PATH/$task/$config/debug/$test_version"
         if [ -d "$path" ]; then
             rm -r "$path"
         fi
@@ -59,8 +59,9 @@ printf "+      Test 1:  hlt_run3 + DeepJetHLT + epoch_lin_decay + AdamW + attack
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
+        --debug True \
+        --DatasetConstructorTask-chunk-size 1000 \
         --config hlt_run3 \
-        --DatasetConstructorTask-chunk-size 10000 \
         --training-version $test_version \
         --dataset-version $test_version \
         --filelist $FILELIST \
@@ -68,7 +69,7 @@ time law run ROCCurveTask \
         --test-filelist $FILELIST  \
         --model-name DeepJetHLT \
         --epochs 2 \
-        --batch-size 512 \
+        --batch-size 4 \
         --lr-scheduler epoch_lin_decay \
         --lr-decay-factor 0.1 \
         --optimizer AdamW \
@@ -83,9 +84,11 @@ time law run ROCCurveTask \
 
 printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
 printf "+      Test 2:  hlt_run3 + DeepJetTransformerHLT + batch_lin_decay + RAdam + attacks (jetfool) + mixed precision                            +\n"
-printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
+        --debug True \
+        --DatasetConstructorTask-chunk-size 1000 \
         --config hlt_run3 \
         --training-version $test_version \
         --dataset-version $test_version \
@@ -94,8 +97,7 @@ time law run ROCCurveTask \
         --test-filelist $FILELIST  \
         --model-name DeepJetTransformerHLT \
         --epochs 2 \
-        --batch-size 128 \
-        --DatasetConstructorTask-chunk-size 10000 \
+        --batch-size 4 \
         --lr-scheduler batch_lin_decay \
         --lr-decay-factor 0.01 \
         --optimizer RAdam \
@@ -108,9 +110,11 @@ time law run ROCCurveTask \
 
 printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
 printf "+      Test 3:  hlt_run3 + UParticleNet_InProHLT + batch_lin_decay + Adam + no attacks + torch.compile(reduce-overhead)                     +\n"
-printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
+        --debug True \
+        --DatasetConstructorTask-chunk-size 1000 \
         --config hlt_run3 \
         --training-version $test_version \
         --dataset-version $test_version \
@@ -120,8 +124,7 @@ time law run ROCCurveTask \
         --model-name UParticleNet_InProHLT \
         --loss-function CrossEntropyLogCoshHLT \
         --epochs 2 \
-        --batch-size 64 \
-        --DatasetConstructorTask-chunk-size 10000 \
+        --batch-size 4 \
         --lr-scheduler batch_lin_decay \
         --lr-decay-factor 0.01 \
         --optimizer Adam \
@@ -133,6 +136,8 @@ printf "+      Test 4:  hlt_run3 + GlobalParticleTransformerHLT + batch_cosine_w
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
+        --debug True \
+        --DatasetConstructorTask-chunk-size 1000 \
         --config hlt_run3 \
         --training-version $test_version \
         --dataset-version $test_version \
@@ -141,8 +146,7 @@ time law run ROCCurveTask \
         --test-filelist $FILELIST  \
         --model-name GlobalParticleTransformerHLT \
         --epochs 2 \
-        --batch-size 32 \
-        --DatasetConstructorTask-chunk-size 10000 \
+        --batch-size 4 \
         --lr-scheduler batch_cosine_warmup \
         --lr-decay-factor 0.1 \
         --optimizer AdamW 
