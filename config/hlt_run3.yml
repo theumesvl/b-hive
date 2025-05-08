@@ -29,6 +29,13 @@ bins_eta:
 processes:
 - "TT"
 - "QCD"
+- "DY"
+- "GluGlu"
+- "HTo2ZdTo2Mu2X"
+- "VBFH"
+- "ZprimeTo2Tau"
+- "WtoTauto3Mu"
+- "HTo2ZdTo2Mu2X"
 
 TT:
  pt_min: 30
@@ -36,7 +43,7 @@ TT:
  eta_min: -2.5
  eta_max: 2.5
 
-QCD:
+DY:
  pt_min: 30
  pt_max: 1000
  eta_min: -2.5

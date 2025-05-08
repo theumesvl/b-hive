@@ -47,7 +47,7 @@ echo "$DEST_FILE" > "$FILELIST"
 
 for task in DatasetConstructorTask TrainingTask InferenceTask ROCCurveTask; do #
     for config in mod_offline_run3; do
-        path="$DATA_PATH/$task/$config/$test_version"
+        path="$DATA_PATH/$task/$config/debug/$test_version"
         if [ -d "$path" ]; then
             rm -r "$path"
         fi
@@ -60,6 +60,7 @@ printf "+         Test 1:  mod_offline_run3 + MoDJet + batch_lin_decay + AdamW +
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
 
 time law run ROCCurveTask \
+        --debug True \
         --config mod_offline_run3 \
         --training-version $test_version \
         --dataset-version $test_version \

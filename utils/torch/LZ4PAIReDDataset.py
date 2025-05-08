@@ -107,6 +107,8 @@ class LZ4PAIReDDataset(IterableDataset):
                 worker_info.id
             ]
 
+        leftover_data = None
+        
         for file in files_to_read:
             
             if self.verbose:
@@ -125,11 +127,10 @@ class LZ4PAIReDDataset(IterableDataset):
 
             # Applying mask based on weights
             if self.weighted_sampling:
-                print('Use Weighted Sampling')
                 random_number = np.random.rand(s.shape[0])
-                mask = random_number < s[:, -1]
-                s = s[mask]
-
+                s = s[random_number < s[:, -1]]
+            
+            s = np.random.permutation(s)
             # Extracting truths, weights, and processes
             truths = np.zeros(s.shape[0])
             labels = s[:,-(self.num_ele+1):-1]
@@ -145,7 +146,7 @@ class LZ4PAIReDDataset(IterableDataset):
             # Extracting glocal, cpf, and vtx features
             indices = np.cumsum(self.feature_lengths.tolist())[:-1]
             glob, cpf, _, vtx = np.split(s, indices, axis=1)
-            
+
             # Reshape the arrays as needed
             glob = glob.reshape(glob.shape[0], -1)
             cpf = cpf.reshape(cpf.shape[0], self.input_dims[1][0], -1)
@@ -159,7 +160,10 @@ class LZ4PAIReDDataset(IterableDataset):
             '''
             Create new input features for PAIReDTagger
             '''
-            # cpf features
+            ################
+            # cpf features #
+            ################
+            
             custom_cpf_features = ["part_pt_log", "part_e_log", "part_logptrel", "part_logerel", "part_deltaR1", "part_deltaR2", "part_d0", "part_dz"]
             cpf_features_to_add = {}
 
@@ -194,7 +198,7 @@ class LZ4PAIReDDataset(IterableDataset):
             # Compute ratios where valid
             part_logptrel[valid_pt_mask]    = (cpf_arr['part_pt'] / jet_pt_sum)[valid_pt_mask]
             part_logerel[valid_energy_mask] = (cpf_arr['part_energy'] / jet_energy_sum)[valid_energy_mask]
-
+            
             # Assign to the dictionary (and also apply transformations on part_pt_log, part_e_log)
             cpf_features_to_add["part_logptrel"] = np.clip(part_logptrel, -10, 10)
             cpf_features_to_add["part_logerel"] = np.clip(part_logerel, -10, 10)
@@ -218,8 +222,10 @@ class LZ4PAIReDDataset(IterableDataset):
             )
             cpf = np.concatenate([cpf, cpf_features_to_add_array], axis=2)
         
+            ################
+            # sv features  #
+            ################
             
-            # sv features
             custom_sv_features = ["sv_px", "sv_py", "sv_pz", "sv_energy"]
             sv_features_to_add = {}
             
@@ -247,7 +253,6 @@ class LZ4PAIReDDataset(IterableDataset):
             sv_vectors = np.stack(
                 [sv_features_to_add[coordinate] for coordinate in self.model.sv_vectors] , axis=2
             )
-                
             cpf_features_full = self.config['cpf_candidates'].copy()
             cpf_features_full.extend(custom_cpf_features)
             vtx_feature_full = self.config['vtx_features'].copy()
@@ -273,8 +278,8 @@ class LZ4PAIReDDataset(IterableDataset):
             
             for feature_name, (min_val, max_val) in transformation_dict.items():
                 idx = cpf_features_full.index(feature_name)
-                cpf_selected[:, :, idx] = np.clip(cpf_selected[:, :, idx], min_val, max_val)          
-
+                cpf_selected[:, :, idx] = np.clip(cpf_selected[:, :, idx], min_val, max_val)  
+                
             # Reshape cpf_selected and vtx_selected for concatenation
             cpf_arrs = cpf_selected.reshape(cpf_selected.shape[0], -1).astype(np.float32)
             vtx_arrs = vtx_selected.reshape(vtx_selected.shape[0], -1).astype(np.float32)
@@ -289,12 +294,35 @@ class LZ4PAIReDDataset(IterableDataset):
                 vtx_arrs, 
                 sv_vectors_flat
             ], axis=1)
-            
-            # Yield the data batch-wise to the model
-            for arr, truth, weight, process in zip(united, truths, weights, processes):
-                yield arr, truth, weight, process
-                
-            return None
+
+            if leftover_data is not None:
+                united = np.concatenate((leftover_data[0], united))
+                truths = np.concatenate((leftover_data[1], truths))
+                weights = np.concatenate((leftover_data[2], weights))
+                processes = np.concatenate((leftover_data[3], processes))
+                leftover_data = None
+
+            num_samples = united.shape[0]
+
+            for batch_start in range(0, num_samples, self.batch_size):
+                batch_end = min(batch_start + self.batch_size, num_samples)
+                if(batch_end - batch_start) == self.batch_size:
+                    #print(f"united[batch_start:batch_end].shape = {united[batch_start:batch_end].shape}")
+                    yield (
+                        united[batch_start:batch_end],
+                        truths[batch_start:batch_end],
+                        weights[batch_start:batch_end],
+                        processes[batch_start:batch_end],
+                    )
+                else:
+                    leftover_data = [
+                        united[batch_start:batch_end],
+                        truths[batch_start:batch_end],
+                        weights[batch_start:batch_end],
+                        processes[batch_start:batch_end],
+                    ]
+                    
+        return None
 
 
     def get_all_weights(self):

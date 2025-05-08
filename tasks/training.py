@@ -295,10 +295,12 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             weights = np.frombuffer(output_data, dtype=dtype).astype('float32')
         chunk_size = int(len(weights) / len(files))
         expected_train_number_of_batches = int(weights[: n_train * chunk_size].sum() // self.batch_size)
+        print(f'Estimated number of jets/events in training (after reweighing):   {expected_train_number_of_batches*self.batch_size:,}')
         if n_train == len(files):
             expected_val_number_of_batches = expected_train_number_of_batches
         else:
             expected_val_number_of_batches   = int(weights[n_train * chunk_size:].sum() // self.batch_size)
+        print(f'Estimated number of jets/events in validation (after reweighing): {expected_val_number_of_batches*self.batch_size:,}')
         
         # Define the training and validation datasets
         training_data = datasetClass(
@@ -338,8 +340,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         # Define the corresponding dataloaders
         training_dataloader = DataLoader(
             training_data,
-#            batch_size=self.batch_size if (config["dataset"] != "LZ4FP16Dataset") else None,
-            batch_size=self.batch_size if ((config["dataset"] != "LZ4FP16Dataset") and (config["dataset"] != "LZ4Dataset")) else None,
+            batch_size = self.batch_size if config["dataset"] not in {"LZ4FP16Dataset", "LZ4Dataset", "LZ4PAIReDDataset"} else None,
             drop_last=False,
             pin_memory=True,  # Pin Memory for faster CPU/GPU memory load
             num_workers=self.n_threads,
@@ -355,8 +356,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
 
         validation_dataloader = DataLoader(
             validation_data,
-#            batch_size=self.batch_size if (config["dataset"] != "LZ4FP16Dataset") else None,
-            batch_size=self.batch_size if ((config["dataset"] != "LZ4FP16Dataset") and (config["dataset"] != "LZ4Dataset")) else None,
+            batch_size = self.batch_size if config["dataset"] not in {"LZ4FP16Dataset", "LZ4Dataset", "LZ4PAIReDDataset"} else None,
             drop_last=False,
             pin_memory=True,
             num_workers=self.n_threads,

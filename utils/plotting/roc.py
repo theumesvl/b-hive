@@ -95,15 +95,17 @@ def plot_losses(train_loss, test_loss, output_dir, ran_epochs, nepochs):
     ax.set_title("Losses")
     if train_loss is not None:
         ax.plot(
-            np.arange(ran_epochs, nepochs),
+            np.arange(1, nepochs + 1),
             train_loss,
+            '-d',
             label="Train",
             color="blue",
         )
     if test_loss is not None:
         ax.plot(
-            np.arange(ran_epochs, nepochs),
+            np.arange(1, nepochs + 1),
             test_loss,
+            '-s',
             label="Validation",
             color="orange",
         )
@@ -119,15 +121,17 @@ def plot_accuracy(train_acc, test_acc, output_dir, ran_epochs, nepochs):
     ax.set_title("Accuracy")
     if train_acc is not None:
         ax.plot(
-            np.arange(ran_epochs, nepochs),
+            np.arange(1, nepochs + 1),
             train_acc,
+            '-d',
             label="Train",
             color="blue",
         )
     if test_acc is not None:
         ax.plot(
-            np.arange(ran_epochs, nepochs),
+            np.arange(1, nepochs + 1),
             test_acc,
+            '-s',
             label="Validation",
             color="orange",
         )

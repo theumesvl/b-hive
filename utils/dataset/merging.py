@@ -99,10 +99,12 @@ def merge_datasets(
             weights_list = []
             for c in range(histograms.shape[0]):
                 other_histogram = histograms[c]
-                other_histogram = other_histogram / np.max(other_histogram)
+                max_hist = np.max(other_histogram)
+                if max_hist != 0:
+                    other_histogram = other_histogram / max_hist
                 with np.errstate(divide="ignore", invalid="ignore"):
                     weights = np.where(other_histogram > 0, reference_histogram / other_histogram, -10)
-                weights = weights / np.max(weights)
+                    weights = weights / np.max(weights)
                 
                 weights[weights < 0] = 1
                 weights[np.isnan(weights)] = 1

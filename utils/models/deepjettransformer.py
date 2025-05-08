@@ -852,10 +852,12 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
             train_metrics["loss_reg"].append(loss_reg)
             train_metrics["acc"].append(acc_training)
 
-            if (not batch_lr) and (scheduler is not None):
-                scheduler.step()
-
-            loss_validation, loss_cat, loss_reg, acc_validation, val_time[t] = self.validate_model(validation_data, loss_fn, device,terminal_plot=terminal_plot)  
+            loss_validation, loss_cat, loss_reg, acc_validation, val_time[t] = self.validate_model(
+                validation_data, 
+                loss_fn, 
+                device,
+                terminal_plot=terminal_plot
+            )  
             
             validation_metrics["loss"].append(loss_validation)
             validation_metrics["loss_cat"].append(loss_validation)
@@ -1015,6 +1017,9 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
                     N // dataloader.dataset.batch_size, f"~{dataloader.nits_expected}"
                 )
             progress.update(task, completed=dataloader.nits_expected)
+
+            if (not batch_lr) and (scheduler is not None):
+                scheduler.step()
         #dataloader.nits_expected = N // dataloader.dataset.batch_size
         accuracy /= N
         print("  ", f"Average loss: {np.array(losses).mean():.4f}")

@@ -19,8 +19,8 @@ class PairedTaggerProcessor(PFCandidateAndVertexProcessing):
     def callColumnAccumulator(self, output, events, flag, **kwargs):
         global_arr, cpf_arr, npf_arr, vtx_arr, truth_arr, process = super().callColumnAccumulator(output, events, flag, **kwargs)
         
-        print('----- Inside PairedTaggerProcessor -----')
-        print('global_arr.shape:', global_arr.shape)
+        # print('----- Inside PairedTaggerProcessor -----')
+        # print('global_arr.shape:', global_arr.shape)
         
         selection_mask = (
                     (~global_arr['includesIsoLepJet'].astype(bool)) &
@@ -31,10 +31,10 @@ class PairedTaggerProcessor(PFCandidateAndVertexProcessing):
                 ) | (
                     truth_arr['label_bb'] == 1
                 )
-        print('selection_mask.shape:', selection_mask.shape)
-        print('selection_mask.sum():', selection_mask.sum())
-        print('global_arr.shape:', global_arr[selection_mask].shape)
-        # raise Exception('Stop here')
+        # print('selection_mask.shape:', selection_mask.shape)
+        # print('selection_mask.sum():', selection_mask.sum())
+        # print('global_arr.shape:', global_arr[selection_mask].shape)
+        # # raise Exception('Stop here')
         return (
             global_arr[selection_mask],
             cpf_arr[selection_mask],

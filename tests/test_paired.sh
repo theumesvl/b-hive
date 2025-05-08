@@ -47,7 +47,7 @@ echo "$DEST_FILE" > "$FILELIST"
 
 for task in DatasetConstructorTask TrainingTask InferenceTask ROCCurveTask; do #
     for config in PAIReD_ParT_cls; do
-        path="$DATA_PATH/$task/$config/$test_version"
+        path="$DATA_PATH/$task/$config/debug/$test_version"
         if [ -d "$path" ]; then
             rm -r "$path"
         fi
@@ -62,23 +62,23 @@ printf "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 time law run ROCCurveTask \
         --config PAIReD_ParT_cls \
+        --debug True \
         --training-version $test_version \
         --dataset-version $test_version \
         --filelist $FILELIST \
         --test-dataset-version $test_version \
         --DatasetConstructorTask-chunk-size 30000 \
-        --DatasetConstructorTask-coffea-worker 1 \
+        --DatasetConstructorTask-coffea-worker 16 \
         --test-filelist $FILELIST  \
         --model-name LZ4PAIReDTagger \
-        --epochs 2 \
+        --epochs 3 \
         --batch-size 512 \
         --lr-scheduler epoch_lin_decay \
         --lr-decay-factor 0.1 \
         --optimizer AdamW \
         --attack pgd \
         --attack-magnitude 0.02 \
-        --attack-iterations 2 \
-        --betas 0.95,0.999 
+        --attack-iterations 2 
         
 printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"

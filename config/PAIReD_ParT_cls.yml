@@ -44,7 +44,7 @@ dataset:
   "LZ4PAIReDDataset"
   
 processes:
-- "PAIReD_LL_CC_BB"
+- "PAIReD"
 #- "QCD"
 
 # selection:

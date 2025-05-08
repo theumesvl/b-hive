@@ -140,10 +140,12 @@ class Classifier_base(nn.Module):
             train_metrics["loss"].append(loss_training)
             train_metrics["acc"].append(acc_training)
 
-            if (not batch_lr) and (scheduler is not None):
-                scheduler.step()
-
-            loss_validation, acc_validation, val_time[t] = self.validate_model(validation_data, loss_fn, device,terminal_plot=terminal_plot)  
+            loss_validation, acc_validation, val_time[t] = self.validate_model(
+                validation_data, 
+                loss_fn, 
+                device,
+                terminal_plot=terminal_plot
+            )  
             
             validation_metrics["loss"].append(loss_validation)
             validation_metrics["acc"].append(acc_validation)
@@ -355,6 +357,9 @@ class Classifier_base(nn.Module):
                     N // dataloader.dataset.batch_size, f"~{dataloader.nits_expected}"
                 )
             progress.update(task, completed=dataloader.nits_expected)
+
+            if (not batch_lr) and (scheduler is not None):
+                scheduler.step()
         #dataloader.nits_expected = N // dataloader.batch_size
         accuracy /= N
         print("  ", f"Average loss: {losses/(b+1):.4f}")
@@ -385,7 +390,7 @@ class Classifier_base(nn.Module):
             N = 1
             task = progress.add_task("Validation...", total=dataloader.nits_expected)
             for b, (x, truth, w, process) in enumerate(dataloader):
-                
+
                 x = x.float().to(device, non_blocking=True)
                 truth = truth.type(torch.LongTensor).to(device, non_blocking=True)
                 w = w.float().to(device, non_blocking=True)
@@ -530,14 +535,15 @@ class Classifier_base(nn.Module):
         g_pred = predictions[:, 5]
         l_pred = predictions[:, -2:].sum(axis=1)
 
-        bvsl = np.where((b_pred + l_pred) > 0, (b_pred) / (b_pred + l_pred), -1)
-        bvsc = np.where((b_pred + c_pred) > 0, (b_pred) / (b_pred + c_pred), -1)
-        cvsb = np.where((b_pred + c_pred) > 0, (c_pred) / (b_pred + c_pred), -1)
-        cvsl = np.where((l_pred + c_pred) > 0, (c_pred) / (l_pred + c_pred), -1)
-        bvsall = np.where(
-            (b_pred + l_pred + c_pred) > 0, (b_pred) / (b_pred + l_pred + c_pred), -1
-        )
-        uds_vs_g = np.where((uds_pred + g_pred) > 0, (uds_pred) / (uds_pred + g_pred), -1)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            bvsl = np.where((b_pred + l_pred) > 0, (b_pred) / (b_pred + l_pred), -1)
+            bvsc = np.where((b_pred + c_pred) > 0, (b_pred) / (b_pred + c_pred), -1)
+            cvsb = np.where((b_pred + c_pred) > 0, (c_pred) / (b_pred + c_pred), -1)
+            cvsl = np.where((l_pred + c_pred) > 0, (c_pred) / (l_pred + c_pred), -1)
+            bvsall = np.where(
+                (b_pred + l_pred + c_pred) > 0, (b_pred) / (b_pred + l_pred + c_pred), -1
+            )
+            uds_vs_g = np.where((uds_pred + g_pred) > 0, (uds_pred) / (uds_pred + g_pred), -1)
 
         b_veto = (truth != 0) & (truth != 1) & (truth != 2) & (summed_jets != 0)
         c_veto = (truth != 3) & (summed_jets != 0)

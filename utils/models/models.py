@@ -21,10 +21,12 @@ class ModelName:
     L1TKerasDeepSet = "L1TKerasDeepSet"
     L1TTorchBase = "L1TTorchBase"
     MoDJet = "MoDJet"
-    PAIReDTagger = "PAIReDTagger"
+    #PAIReDTagger = "PAIReDTagger"
     LZ4PAIReDTagger = "LZ4PAIReDTagger"
     ParticleNet = "ParticleNet"
     ParticleTransformer = "ParticleTransformer"
+    DeepJet_PAIReD = "DeepJet_PAIReD"
+    #ParT_cls = "ParT_cls"
 
     
 def BTaggingModels(model: str = "", *args, **kwargs):
@@ -86,11 +88,19 @@ def BTaggingModels(model: str = "", *args, **kwargs):
         case ModelName.L1TTorchBase:
             from utils.models.l1t_base import L1TTorchBase
             return L1TTorchBase(*args, **kwargs)
-        case ModelName.PAIReDTagger:
-            from utils.models.PAIReDTagger import PAIReDTagger
-            return PAIReDTagger(*args, **kwargs)
         case ModelName.LZ4PAIReDTagger:
             from utils.models.LZ4PAIReDTagger import LZ4PAIReDTagger
             return LZ4PAIReDTagger(*args, **kwargs)
+        case ModelName.DeepJet_PAIReD:
+            from utils.models.deepjet import DeepJet_PAIReD   
+            return DeepJet_PAIReD(*args, **kwargs)
         case _:
             raise NotImplementedError(f"The model '{model}' is not implemented.")
+'''
+case ModelName.PAIReDTagger:
+    from utils.models.PAIReDTagger import PAIReDTagger
+    return PAIReDTagger(*args, **kwargs)
+case ModelName.ParT_cls:
+    from utils.models.ParT_Paired import ParT_cls   
+    return ParT_cls(**kwargs)       
+''' 

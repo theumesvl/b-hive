@@ -665,10 +665,10 @@ class ParticleTransformer(Classifier_base):
         self.pair_embed = PairEmbed(4, [48, 48] + [num_head], for_onnx=for_inference)
         self.cls_norm = torch.nn.LayerNorm(embed_dim)
 
-        self.EncoderLayer = HF_TransformerEncoderLayer(
+        EncoderLayer = HF_TransformerEncoderLayer(
             d_model=embed_dim, nhead=num_head, dropout=0.1
         )
-        self.Encoder = HF_TransformerEncoder(self.EncoderLayer, num_layers=num_enc)
+        self.Encoder = HF_TransformerEncoder(EncoderLayer, num_layers=num_enc)
 
         self.CLS_EncoderLayer1 = CLS_TransformerEncoderLayer(
             d_model=embed_dim, nhead=num_head, dropout=0.1

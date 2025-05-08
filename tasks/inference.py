@@ -65,6 +65,7 @@ class InferenceTask(
             "truth": self.local_target("truth.npy"),
             "kinematics": self.local_target("kinematics.npy"),
             "inference_time": self.local_target("inference_time.npy"),
+            # "inference_writeout": self.local_target("inference_feature_writeout.parquet"),
         }
 
     def run(self):
@@ -161,7 +162,7 @@ class InferenceTask(
         )
         test_dataloader = DataLoader(
             test_data,
-            batch_size=self.batch_size if ((config["dataset"] != "LZ4FP16Dataset") and (config["dataset"] != "LZ4Dataset")) else None,
+            batch_size = self.batch_size if config["dataset"] not in {"LZ4FP16Dataset", "LZ4Dataset", "LZ4PAIReDDataset"} else None,
             num_workers=self.n_threads,
             pin_memory=True,  # Pin Memory for faster CPU/GPU memory load
         )
@@ -170,6 +171,7 @@ class InferenceTask(
         loss_function = LossFunctionLoader(self.loss_function)
         
         print("Start inference on", self.device)
+
         predictions, truths, kinematics, processes, inference_time = model.predict_model(
             test_dataloader, self.output(), loss_function, self.device, attack=attack
         )

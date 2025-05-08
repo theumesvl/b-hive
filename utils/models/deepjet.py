@@ -36,11 +36,11 @@ class DeepJet(Classifier_base):
     }
 
     integer_features = {
-            "global_features": ["n_Cpfcand", "nCpfcan", "n_Npfcand", "nNpfcan", "nsv", "npv",
-                                "TagVarCSV_vertexCategory", "TagVarCSV_jetNSelectedTracks", "TagVarCSV_jetNTracksEtaRel"],
-            "cpf_candidates": ["Cpfcan_VTX_ass", "Cpfcan_puppiw", "Cpfcan_chi2", "Cpfcan_quality"],
-            "npf_candidates": ["Npfcan_isGamma", "Npfcan_HadFrac", "Npfcan_puppiw"],
-            "vtx_features": ["sv_ntracks"]
+        "global_features": ["n_Cpfcand", "nCpfcan", "n_Npfcand", "nNpfcan", "nsv", "npv",
+                            "TagVarCSV_vertexCategory", "TagVarCSV_jetNSelectedTracks", "TagVarCSV_jetNTracksEtaRel"],
+        "cpf_candidates": ["Cpfcan_VTX_ass", "Cpfcan_puppiw", "Cpfcan_chi2", "Cpfcan_quality"],
+        "npf_candidates": ["Npfcan_isGamma", "Npfcan_HadFrac", "Npfcan_puppiw"],
+        "vtx_features": ["sv_ntracks"]
     }
 
     def __init__(self,
@@ -69,6 +69,7 @@ class DeepJet(Classifier_base):
         self.DenseClassifier = DenseClassifier(dense_clas_dim_full)
 
         self.global_bn = torch.nn.BatchNorm1d(global_dim, eps=0.001, momentum=0.6)
+        print(self.global_bn)
         self.cpf_lstm = torch.nn.LSTM(
             input_size=cpf_conv[-1], hidden_size=lstm_dim[0], num_layers=n_layers_lstm, batch_first=True
         )
@@ -92,7 +93,7 @@ class DeepJet(Classifier_base):
     def forward(self, inpt):
          
         global_features, cpf_features, npf_features, vtx_features = inpt[0], inpt[1], inpt[2], inpt[3]
-
+        
         global_features = self.global_bn(global_features)
         
         cpf, npf, vtx = self.InputProcess(cpf_features, npf_features, vtx_features)

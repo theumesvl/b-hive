@@ -342,25 +342,19 @@ class LinLayer2(nn.Module):
 
 class InputProcess(nn.Module):
 
-    def __init__(self, cpf_dim, npf_dim, sv_dim, embed_dim, **kwargs): 
-        super(InputProcess, self).__init__(**kwargs)
+    def __init__(self, cpf_dim, sv_dim, embed_dim, **kwargs): 
+        super().__init__(**kwargs)
 
         self.cpf_bn0 = torch.nn.BatchNorm1d(cpf_dim, eps=0.001, momentum=0.1)
         self.cpf_conv1 = InputConv(cpf_dim, embed_dim)
         # self.cpf_conv2 = InputConv(embed_dim,embed_dim*4)
         self.cpf_conv3 = InputConv(embed_dim * 1, embed_dim)
 
-        #self.npf_bn0 = torch.nn.BatchNorm1d(npf_dim, eps=0.001, momentum=0.1)
-        #self.npf_conv1 = InputConv(npf_dim, embed_dim)
-        # self.npf_conv2 = InputConv(embed_dim,embed_dim*4)
-        #self.npf_conv3 = InputConv(embed_dim * 1, embed_dim)
-
         self.sv_bn0 = torch.nn.BatchNorm1d(sv_dim, eps=0.001, momentum=0.1)
         self.sv_conv1 = InputConv(sv_dim, embed_dim)
         # self.sv_conv2 = InputConv(embed_dim,embed_dim*4)
         self.sv_conv3 = InputConv(embed_dim * 1, embed_dim)
 
-#        self.meta_conv = InputConv(8*16,8*16)
 
     def forward(self, cpf, sv):
 
@@ -368,11 +362,6 @@ class InputProcess(nn.Module):
         cpf = self.cpf_conv1(cpf, cpf, skip=False)
         # cpf = self.cpf_conv2(cpf, cpf, skip = False)
         cpf = self.cpf_conv3(cpf, cpf, skip=False)
-
-        #npf = self.npf_bn0(torch.transpose(npf, 1, 2))
-        #npf = self.npf_conv1(npf, npf, skip=False)
-        # npf = self.npf_conv2(npf, npf, skip = False)
-        #npf = self.npf_conv3(npf, npf, skip=False)
 
         sv = self.sv_bn0(torch.transpose(sv, 1, 2))
         sv = self.sv_conv1(sv, sv, skip=False)
@@ -715,11 +704,11 @@ class LZ4PAIReDTagger(Classifier_base):
         'sv_dphi2',
     ]
 
-    feature_keys = [global_features, cpf_vectors, cpf_candidates, sv_features, sv_vectors]
+    #feature_keys = [global_features, cpf_vectors, cpf_candidates, sv_features, sv_vectors]
 
     integer_features = {
-            "cpf_candidates": ["Cpfcan_VTX_ass", "Cpfcan_puppiw", "Cpfcan_chi2", "Cpfcan_quality"],
-            "vtx_features":   ["sv_ntracks"],
+        "cpf_candidates": ["part_puppiweight", "part_charge"],
+        "vtx_features":   ["sv_charge", "sv_ndof", "sv_ntracks"],
     }
     
     #@profile
@@ -730,28 +719,24 @@ class LZ4PAIReDTagger(Classifier_base):
         num_enc=3,
         num_head=8,
         embed_dim=128, #need to be a multiple of the num_head
-        cpf_dim=16,
-        npf_dim=0,
-        sv_dim=17,
-        for_inference=False,#False,
+        for_inference=False,
         build_4v=False,
         class_weights=None,
         **kwargs
     ):
-        super(LZ4PAIReDTagger, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self.config = config
-
-        self.loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
-                
+        
         self.for_inference = for_inference
         self.build_4v = build_4v
         self.num_enc_layers = num_enc
-        self.cpf_fts = cpf_dim
-        self.npf_fts = npf_dim
-        self.sv_fts = sv_dim
+
         self.num_head = num_head
-        self.InputProcess = InputProcess(cpf_dim, npf_dim, sv_dim, embed_dim)
+
+        _, cpf_dim, _, sv_dim = self.all_model_features_length()
+
+        self.InputProcess = InputProcess(cpf_dim, sv_dim, embed_dim)
         self.Linear = nn.Linear(embed_dim, num_classes)
 
         self.pair_embed = PairEmbed(4, [64, 64] + [num_head], for_onnx=for_inference)
@@ -769,17 +754,12 @@ class LZ4PAIReDTagger(Classifier_base):
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim), requires_grad=True)
         trunc_normal_(self.cls_token, std=0.02)
 
-    #@profile
-    def forward(self, inpt, kd=False): #NOTE: 4v: (batch_size, seq_len, 4); features: (batch_size, seq_len, feature_dim)
+    def forward(self, inpt, kd=False):
+ 
+        cpf, cpf_4v, sv, sv_4v = inpt[0], inpt[1], inpt[2], inpt[3]
+        #4v: (batch_size, seq_len, 4); 
+        #features: (batch_size, seq_len, feature_dim)
 
-        cpf_features, cpf_4v, sv_features, sv_4v = inpt[0], inpt[1], inpt[2], inpt[3]
-
-        # trim down to number of candidates
-        cpf_features = cpf_features[:, :self.n_cpf]
-        cpf_4v       = cpf_4v[:, :self.n_cpf]
-        sv_features  = sv_features[:, :self.n_sv]
-        sv_4v        = sv_4v[:, :self.n_sv]
-        
         padding_mask = torch.cat((cpf_4v[:, :, :], sv_4v[:, :, :]), dim=1) #mask shape (batch_size, seq_len) ##if emergy, then remove ones that acces px: [:, :, :1]
         padding_mask = torch.eq(padding_mask[:, :, 3], 0.0) # can switch to energy if wanted
 
@@ -787,15 +767,10 @@ class LZ4PAIReDTagger(Classifier_base):
             cpf_4v = build_E_p(cpf_4v)
             sv_4v  = build_E_p(sv_4v)
 
-        cpf = cpf_features[:, :, : self.cpf_fts]
-        sv = sv_features[:, :, : self.sv_fts]
-                
         enc = self.InputProcess(cpf, sv)
 
         lorentz_vectors = torch.cat((cpf_4v, sv_4v), dim=1) #added sv_4v
-        
         v = lorentz_vectors.transpose(1, 2) #hint: torch.transpose does the same as np.swapaxes
-        
         attn_mask = self.pair_embed(v).view(-1, v.size(-1), v.size(-1))    #Computes the kinematics link between each pair of jet consituents which will be an attention bias in the MHA
         
         enc = self.Encoder(enc, attn_mask, padding_mask)
@@ -818,7 +793,14 @@ class LZ4PAIReDTagger(Classifier_base):
         
         return output
 
-    
+    # need to redefine as there is a difference in names: sv and vtx
+    def all_model_features_length(self):
+        global_dim = self.model_feature_length('global_features', 'global_custom_features')
+        cpf_dim = self.model_feature_length('cpf_candidates', 'cpf_custom_features')
+        npf_dim = self.model_feature_length('npf_candidates', 'npf_custom_features')
+        vtx_dim = self.model_feature_length('sv_features', 'sv_custom_features')
+        return global_dim, cpf_dim, npf_dim, vtx_dim
+        
     def create_feature_shapes(self):
         # Constructions of input shape from config.yaml file
         self.input_dims = [

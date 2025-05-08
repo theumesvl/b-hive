@@ -61,6 +61,7 @@ class DatasetConstructorTask(DatasetDependency, BaseTask):
 
         all_files = []
         samples = read_in_samples_match_processes(self.filelist, config["processes"])
+        print('Number of files:', len(samples))
 
         if self.debug:
             # skim files to only 10 files per process
