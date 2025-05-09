@@ -20,6 +20,7 @@ class L1TDataset(IterableDataset):
         bins_pt=None,
         bins_eta=None,
         verbose=1,
+        batch_size=512,
         **kwargs,
     ):
         self.verbose = verbose
@@ -41,6 +42,7 @@ class L1TDataset(IterableDataset):
             else:
                 self.all_number_of_samples = 0
         self.weighted_sampling = weighted_sampling
+        self.batch_size = batch_size
 
         self.global_features = model.global_features
         self.cpf_candidates = model.cpf_candidates

@@ -28,18 +28,19 @@ def plot_roc_list(
     pt_min,
     pt_max,
     name,
-    xmin=0.0,
+    xmin=0.0,ymin=1e-5,
     energy="13.6 TeV",
     save_numpy=True,
 ):
-    for disc, truth, veto, roc_label, xlabel, ylabel, color in zip(
+    color = color_set_list[0]
+    AUC_arr = {}
+    for disc, truth, veto, roc_label, xlabel, ylabel in zip(
         discs,
         truths,
         vetos,
         labels,
         xlabels,
         ylabels,
-        color_set_list[0:len(discs)],
     ):
         try:
             fpr, tpr, _ = roc_curve(truth[veto], disc[veto])
@@ -50,6 +51,7 @@ def plot_roc_list(
             )
             continue
         area = auc(fpr, tpr)
+        AUC_arr[roc_label] = area
         if save_numpy:
             np.save(
                 os.path.join(output_directory, f"roc_{name}_{roc_label}.npy"),
@@ -68,8 +70,13 @@ def plot_roc_list(
                 output_path=plot_name,
                 colors=color,
                 r_label=energy,
-                xmin=xmin,
+                xmin=xmin,ymin=ymin
             )
+            
+    np.save(
+        os.path.join(output_directory, f"AUC_{name}_all.npy"),
+        np.array(AUC_arr),
+    )
 
 
 # adapted from https://github.com/AlexDeMoor/DeepJet/blob/ParticleTransformer/scripts/plot_roc.py and https://github.com/AlexDeMoor/DeepJet/blob/ParticleTransformer/scripts/plot_roc.ipynb
@@ -83,20 +90,22 @@ def calculate_roc(truth, discriminator, veto, output_directory, dataset_key, nam
     return fpr, tpr, area
 
 
-def plot_losses(train_loss, test_loss, output_dir=None, epochs=None):
+def plot_losses(train_loss, test_loss, output_dir, ran_epochs, nepochs):
     fig, ax = plt.subplots()
     ax.set_title("Losses")
     if train_loss is not None:
         ax.plot(
-            np.linspace(0, epochs, len(train_loss)),
+            np.arange(1, nepochs + 1),
             train_loss,
+            '-d',
             label="Train",
             color="blue",
         )
     if test_loss is not None:
         ax.plot(
-            np.linspace(0, epochs, len(test_loss)),
+            np.arange(1, nepochs + 1),
             test_loss,
+            '-s',
             label="Validation",
             color="orange",
         )
@@ -105,6 +114,32 @@ def plot_losses(train_loss, test_loss, output_dir=None, epochs=None):
     ax.legend()
     fig.savefig(os.path.join(output_dir, "loss.pdf"))
     fig.savefig(os.path.join(output_dir, "loss.png"))
+
+
+def plot_accuracy(train_acc, test_acc, output_dir, ran_epochs, nepochs):
+    fig, ax = plt.subplots()
+    ax.set_title("Accuracy")
+    if train_acc is not None:
+        ax.plot(
+            np.arange(1, nepochs + 1),
+            train_acc,
+            '-d',
+            label="Train",
+            color="blue",
+        )
+    if test_acc is not None:
+        ax.plot(
+            np.arange(1, nepochs + 1),
+            test_acc,
+            '-s',
+            label="Validation",
+            color="orange",
+        )
+    ax.set_xlabel("Epochs")
+    ax.set_ylabel("Accuracy")
+    ax.legend()
+    fig.savefig(os.path.join(output_dir, "acc.pdf"))
+    fig.savefig(os.path.join(output_dir, "acc.png"))
 
 
 def plot_roc(
@@ -119,7 +154,7 @@ def plot_roc(
     l_label="Preliminary",
     output_path="roc.pdf",
     colors=None,
-    xmin=None,
+    xmin=None,ymin=None,
     writeout_auc=True,
 ):
     if not (isinstance(roc_list, list)):
@@ -164,7 +199,8 @@ def plot_roc(
     plt.ylabel(y_label)
     plt.yscale("log")
     plt.xlim(xmin, 1)
-    plt.ylim(2 * 1e-4, 1)
+    # plt.ylim(2 * 1e-4, 1)
+    plt.ylim(1e-5, 1)
     plt.grid(which="minor", alpha=0.85)
     plt.grid(which="major", alpha=0.95, color="black")
     title = ""

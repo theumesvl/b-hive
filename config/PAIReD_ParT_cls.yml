@@ -38,10 +38,13 @@ treename:
   "tree"
 
 processor:
-  "PairedTaggerProcessor"
+  "LZ4_PairedTaggerProcessor"
+
+dataset:
+  "LZ4PAIReDDataset"
   
 processes:
-- "PAIReD_LL_CC_BB"
+- "PAIReD"
 #- "QCD"
 
 # selection:
@@ -120,7 +123,7 @@ cpf_candidates: #len: N_pf auf 128 setzen
 
 n_npf_candidates: 128
 
-n_vtx_features: 10
+n_vtx_candidates: 10
 vtx_features: # len: N_sv auf 10 setzen
 - "sv_charge"
 - "sv_chi2"

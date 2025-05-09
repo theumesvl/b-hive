@@ -123,7 +123,7 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
             for i, proc in enumerate(self.processes):
                 if proc in dataset:
                     proc_flag = i
-
+        
         output = self.accumulator
         output_location_list = []
 
@@ -137,17 +137,12 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
         ) = self.callColumnAccumulator(
             output, events, proc_flag, filename=events.metadata["filename"]
         )
-        # print('### DEBUGGING ###')
-        # print('COFFEA PROCESSOR: base.py')
         
         for truth_label in self.truths:
             self.truth_hists[truth_label].fill(
                 global_arr[self.pt_key][truth[truth_label]],
                 global_arr[self.eta_key][truth[truth_label]],
             )
-        # print('truth labels filled')
-        # print('self.truth_hists[truth_label]: ', self.truth_hists[truth_label])
-        # print('+++++++++++++++++++++++++++++')
 
         output_location = os.path.join(
             self.output_dir, f"{self.prefix}{dataset}_{filename}_{start}_{stop}.npz"
@@ -158,6 +153,7 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
         self.saveOutput(
             output_location, global_arr, cpf_arr, npf_arr, vtx_arr, truth, process
         )
+        
         ret = {}
         ret["output_location"] = output_location_list
         for label, hist in self.truth_hists.items():

@@ -1,10 +1,14 @@
 import law
 import luigi
 import os
+import torch
+import lz4.frame
+from torch.utils.data import DataLoader
 from pathlib import Path
 
-from pathlib import Path
-from torch.utils.data import DataLoader
+#debug
+import psutil
+import time
 
 from tasks.base import BaseTask
 from tasks.dataset import DatasetConstructorTask
@@ -15,9 +19,9 @@ from tasks.parameter_mixins import (
 )
 from utils.config.config_loader import ConfigLoader
 from utils.models.models import BTaggingModels
+from utils.loss.LossFunctionLoader import LossFunctionLoader
 from utils.plotting.roc import plot_roc_list, plot_losses
 from torch.nn import Module
-
 
 def import_libraries():
     from torch.utils.data import DataLoader
@@ -25,34 +29,23 @@ def import_libraries():
     import numpy as np
 
     from utils.adversarial_attacks.pick_attack import pick_attack
-    from utils.plotting.roc import plot_roc_list, plot_losses
-
-    return (
-        DataLoader,
-        torch,
-        np,
-        pick_attack,
-        plot_roc_list,
-        plot_losses,
-    )
-
-
-# debug
-import psutil
-
-# import memray
-import time
-
-# import gc
+    from utils.plotting.roc import plot_roc_list, plot_losses, plot_accuracy
+    from utils.optimizing.SchedulerLoader import SchedulerLoader
+    from utils.optimizing.OptimizerLoader import OptimizerLoader
+    from utils.torch.DatasetLoader import DatasetLoader
+    from torch.nn import Module
+    
+    return DataLoader, torch, np, pick_attack, plot_roc_list, plot_losses, plot_accuracy, SchedulerLoader, OptimizerLoader, DatasetLoader, Module
 
 law.contrib.load("numpy")
-
 
 def check_memory_usage():
     memory_usage = psutil.virtual_memory().used / (1024.0**3)
     return memory_usage
 
-
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+    
 def check_resume(base_path, model_prefix="model_", model_suffix=".pt", load_epoch=None):
     models = {}
     for p in Path(base_path).glob(f"{model_prefix}[0-9]*{model_suffix}"):
@@ -65,14 +58,14 @@ def check_resume(base_path, model_prefix="model_", model_suffix=".pt", load_epoc
     else:
         if not load_epoch:
             max_epoch = max(models)
-            return models[max_epoch], max_epoch
+            return models[max_epoch], max_epoch + 1, models
         else:
-            return models[load_epoch], load_epoch
+            return models[load_epoch - 1], load_epoch, models
 
 
-def load_resume_training(model, path, device, optimizer=None, epoch=None):
+def load_resume_training(model, path, device, output, optimizer=None, scheduler=None, epoch=None):
     try:
-        model_path, ran_epochs = check_resume(path, load_epoch=epoch)
+        model_path, ran_epochs, models = check_resume(path, load_epoch=epoch)
         _model = torch.load(
             model_path,
             map_location=torch.device(device),
@@ -80,23 +73,47 @@ def load_resume_training(model, path, device, optimizer=None, epoch=None):
         model.load_state_dict(_model["model_state_dict"])
         if not (optimizer is None):
             optimizer.load_state_dict(_model["optimizer_state_dict"])
+        if not (scheduler is None):
+            scheduler.load_state_dict(_model["scheduler_state_dict"])
         print(f"Resuming on epoch {ran_epochs}:\n{model_path}")
-        return model, optimizer, ran_epochs
     except FileNotFoundError:
-        print("No training to resume found. Starting a new one.")
-        return model, 0
+        print("No training to resume found. Starting a new one")
+        ran_epochs = 0
+        best_loss_val = float('inf')
+    
+    train_metrics = {"loss": [], "acc": []}
+    validation_metrics = {"loss": [], "acc": []}
+    
+    if ran_epochs != 0:
+        try:
+            train_metrics = output["training_metrics"].load()
+            train_metrics = {key: value.tolist() for key, value in train_metrics.items()}
+            validation_metrics = output["validation_metrics"].load()
+            validation_metrics = {key: value.tolist() for key, value in validation_metrics.items()}
+        except FileNotFoundError:
+            print("Training and validation metrics were not saved correctly during previous run. Recovering metrics from .pt files.")
+            for epoch in range(ran_epochs):
+                checkpoint = torch.load(models[epoch])
+                train_metrics['loss'].append(checkpoint["loss_train"])
+                train_metrics['acc'].append(checkpoint["acc_train"])
+                validation_metrics['loss'].append(checkpoint["loss_val"])
+                validation_metrics['acc'].append(checkpoint["acc_val"])
+        best_loss_val = min(validation_metrics["loss"])        
+                
+    return model, optimizer, scheduler, ran_epochs, train_metrics, validation_metrics, best_loss_val
 
 
 class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, BaseTask):
     loss_weighting = luigi.BoolParameter(
         False,
-        description="Whether to weight the loss or use weighted sampling from the dataset.",
+        description="Whether to weight the loss or use weighted sampling from the dataset (default).",
     )
 
     resume_training = luigi.BoolParameter(
         False,
         description="Whether to resume the training if it already ran partially and failed. Set this to true if you want to resume.",
     )
+    
     resume_epoch = luigi.IntParameter(
         False,
         description="Whether to resume the training from a specific epoch.",
@@ -107,8 +124,11 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         description="Number of epochs to extend a training.",
     )
 
-    train_val_split = 0.8
-
+    train_val_split = luigi.FloatParameter(
+        default=0.85,
+        description="The ratio to divide dataset for train/validation. Default: 0.85"
+    )
+    
     def requires(self):
         return DatasetConstructorTask.req(self)
 
@@ -121,7 +141,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
                 if issubclass(
                     type(
                         BTaggingModels(
-                            self.model_name, ConfigLoader.load_config(self.config).get("model_arguments", {})
+                            self.model_name, ConfigLoader.load_config(self.config)
                         )
                     ),
                     Module,
@@ -133,7 +153,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
                 if issubclass(
                     type(
                         BTaggingModels(
-                            self.model_name, ConfigLoader.load_config(self.config).get("model_arguments", {})
+                            self.model_name, ConfigLoader.load_config(self.config)
                         )
                     ),
                     Module,
@@ -143,14 +163,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         }
 
     def run(self):
-        (
-            DataLoader,
-            torch,
-            np,
-            pick_attack,
-            plot_roc_list,
-            plot_losses,
-        ) = import_libraries()
+        DataLoader, torch, np, pick_attack, plot_roc_list, plot_losses, plot_accuracy, SchedulerLoader, OptimizerLoader, DatasetLoader, Module = import_libraries()
         self.set_device()
         # with memray.Tracker("/net/scratch_cms3a/uwillemsen/condor/b-hive/output/memory_screening/half_training_interactive_data_04_60GB.bin"): #full_training_data_04_cs50000/full_training_high_ram_01_v1_eps10.bin
         #     print("Allocations will be tracked until the with block ends")
@@ -160,10 +173,16 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         time_0 = time.time()
         # Loading config
         config = ConfigLoader.load_config(self.config)
+
+        #print(f"Memory usage at beginning of TrainingTask(): {check_memory_usage():.4f} GiB")
+
         os.makedirs(self.local_path(), exist_ok=True)
         print("Loading Dataset")
         files = self.input()["file_list"].load().split("\n")
+        if not os.path.exists(files[-1]):
+            files = files[:-1]
 
+        assert (self.train_val_split <= 1) and (self.train_val_split >= 0), "train_val_split should be between 0 and 1!"
         n_train = max(
             (1, int(len(files) * self.train_val_split))
         )  # has at least one training file
@@ -174,7 +193,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             print(
                 "No validation files found. Please check your dataset. Most likely you only have one file!"
             )
-            print("Using the trainingfile for validation")
+            print("Using the training file for validation")
             print()
             validation_files = training_files
         if not (isinstance(training_files, list)):
@@ -183,13 +202,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             validation_files = [validation_files]
         print(f"#Train files: {len(training_files)}")
         print(f"#Val files: {len(validation_files)}")
-
-        print("**********************************")
-        print("Training files: ", training_files)
-        print("**********************************")
-        print("Validation files: ", validation_files)
-        print("**********************************")
-
+        
         histogram_training = np.load(
             self.input()["histogram"].path,
             allow_pickle=True,
@@ -212,14 +225,24 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             class_weights = None
 
         # Model Defintion
-        if issubclass(type(model := BTaggingModels(self.model_name)), torch.nn.Module):
-            model = BTaggingModels(self.model_name).to(self.device)
-            optimizer = model.optimizerClass(
-                model.parameters(), lr=self.learning_rate, eps=1e-7
+        if issubclass(type(model := BTaggingModels(self.model_name, config)), torch.nn.Module):
+            model = model.to(self.device)
+            model.create_integers_defaults()
+            model.create_feature_shapes()
+            model.mixed_precision = self.mixed_precision
+            model.use_torch_compile = self.use_torch_compile
+            optimizer = OptimizerLoader(
+                self.optimizer, 
+                self.learning_rate, 
+                model.parameters(),
+                betas = self.betas, 
+                eps=self.eps,
             )
         else:
             optimizer = model.optimizer
 
+        #print(f"Memory usage after initializing model, optimizer, and scheduler: {check_memory_usage():.4f} GiB")
+        
         # Picking attack
         print(
             rf"Applying {self.attack} attack (attack_magnitude={self.attack_magnitude}, n_iterations={self.attack_iterations}, attack_uncertainty={self.attack_uncertainty})."
@@ -228,10 +251,17 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             self.input()["file_list"].path.strip("processed_files.txt") + "epsilons/"
         )
 
+        feature_keys = []
+        for name_fts in ['global_features', 'cpf_candidates', 'npf_candidates', 'vtx_features']:
+            if hasattr(model, name_fts):
+                feature_keys.append(getattr(model, name_fts))
+            else:
+                feature_keys.append(config[name_fts] if name_fts in config.keys() else [])
+             
         attack = pick_attack(
             attack=self.attack,
             device=self.device,
-            input_keys=model.feature_keys,
+            input_keys=feature_keys,
             integer_positions=model.integers,
             default_values=model.defaults,
             epsilon=self.attack_magnitude,
@@ -245,124 +275,172 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             store_path=self.local_path(""),
             uncertainty=self.attack_uncertainty,
         )
-        attack = torch.compile(attack, mode="max-autotune")
+        #attack = torch.compile(attack, mode="max-autotune")
 
-        print("Model construction")
-        if self.resume_training or self.resume_epoch or self.extend_training:
-            model, optimizer, ran_epochs = load_resume_training(
-                model,
-                self.local_path(),
-                self.device,
-                optimizer=optimizer,
-                epoch=self.resume_epoch,
-            )
-            train_metrics_first = self.output()["training_metrics"].load()
-            validation_metrics_first = self.output()["validation_metrics"].load()
+        #print(f"Memory usage before datasets loading: {check_memory_usage():.4f} GiB")
+        
+        print("Dataset construction")
+        datasetClass = DatasetLoader(config["dataset"])
+
+        weights_file = (
+            self.input()["file_list"].path.strip("processed_files.txt") + "weights.lz4"
+        )
+        if config.get("processor") == "LZ4FP16Processing":
+            dtype = np.float16
         else:
-            ran_epochs = 0
-            train_metrics_first = {"loss": [], "acc": []}
-            validation_metrics_first = {"loss": [], "acc": []}
-        datasetClass = model.datasetClass
+            dtype = np.float32
 
-        # check memory usage
-        memory_usage1 = check_memory_usage()
-        print("Memory usage before data loading: ", memory_usage1)
-
+        with lz4.frame.open(weights_file, mode='r', block_size=lz4.frame.BLOCKSIZE_MAX4MB) as fp:
+            output_data = fp.read()
+            weights = np.frombuffer(output_data, dtype=dtype).astype('float32')
+        chunk_size = int(len(weights) / len(files))
+        expected_train_number_of_batches = int(weights[: n_train * chunk_size].sum() // self.batch_size)
+        print(f'Estimated number of jets/events in training (after reweighing):   {expected_train_number_of_batches*self.batch_size:,}')
+        if n_train == len(files):
+            expected_val_number_of_batches = expected_train_number_of_batches
+        else:
+            expected_val_number_of_batches   = int(weights[n_train * chunk_size:].sum() // self.batch_size)
+        print(f'Estimated number of jets/events in validation (after reweighing): {expected_val_number_of_batches*self.batch_size:,}')
+        
         # Define the training and validation datasets
         training_data = datasetClass(
             training_files,
             model=model,
+            config_truths=list(config['truths']),
+            all_number_of_samples=int(len(weights)*self.train_val_split),
             data_type="training",
             weighted_sampling=not (self.loss_weighting),
+            device=self.device,
             bins_pt=config["bins_pt"],
             bins_eta=config["bins_eta"],
             verbose=self.verbose,
-            # process_weights=[
-            #     config.get("process-weights", {}).get(proc, 1.0)
-            #     for proc in config.get("processes", [])
-            # ],
+            config=config,
+            batch_size=self.batch_size,
         )
 
+        #print(f"Memory usage after training dataset loading: {check_memory_usage():.4f} GiB")
+        
         validation_data = datasetClass(
             validation_files,
             model=model,
+            config_truths=list(config['truths']),
+            all_number_of_samples=len(weights) - int(len(weights)*self.train_val_split),
             data_type="validation",
             weighted_sampling=not (self.loss_weighting),
             device=self.device,
-            histogram_training=None,
             bins_pt=config["bins_pt"],
             bins_eta=config["bins_eta"],
             verbose=self.verbose,
-            # process_weights=[
-            #     config.get("process-weights", {}).get(proc, 1.0)
-            #     for proc in config.get("processes", [])
-            # ],
+            config=config,
+            batch_size=self.batch_size,
         )
+
+        #print(f"Memory usage after validation dataset loading: {check_memory_usage():.4f} GiB")
 
         # Define the corresponding dataloaders
         training_dataloader = DataLoader(
             training_data,
-            batch_size=self.batch_size,
-            drop_last=True,
+            batch_size = self.batch_size if config["dataset"] not in {"LZ4FP16Dataset", "LZ4Dataset", "LZ4PAIReDDataset"} else None,
+            drop_last=False,
             pin_memory=True,  # Pin Memory for faster CPU/GPU memory load
             num_workers=self.n_threads,
         )
 
+        if expected_train_number_of_batches == 0:
+            raise ValueError("The training DataLoader is empty. Ensure that you have enough data to form at least one batch.")
+
         # Expected number of iterations
-        training_dataloader.nits_expected = len(training_dataloader)
+        training_dataloader.nits_expected = expected_train_number_of_batches
+
+        #print(f"Memory usage after initializing training dataloader: {check_memory_usage():.4f} GiB")
 
         validation_dataloader = DataLoader(
             validation_data,
-            batch_size=self.batch_size,
+            batch_size = self.batch_size if config["dataset"] not in {"LZ4FP16Dataset", "LZ4Dataset", "LZ4PAIReDDataset"} else None,
             drop_last=False,
             pin_memory=True,
             num_workers=self.n_threads,
         )
+        
+        validation_dataloader.nits_expected = expected_val_number_of_batches
 
-        memory_usage2 = check_memory_usage()
-        print("Memory usage after initializing validation dataloader: ", memory_usage2)
+        #print(f"Memory usage after initializing validation dataloader: {check_memory_usage():.4f} GiB")
+        
+        # The learning rate scheduler
+        scheduler, batch_lr =  SchedulerLoader(
+            self.lr_scheduler, 
+            self.learning_rate,
+            self.lr_decay_factor,
+            optimizer, 
+            self.epochs, 
+            dataloader = training_dataloader
+        )
+        loss_function = LossFunctionLoader(self.loss_function, class_weights=class_weights)
+        
+        print(f"Model:     {self.model_name}")
+        print(f'Optimizer: {self.optimizer}')
+        print(f'Scheduler: {self.lr_scheduler}')
+        
+        if self.resume_training or self.resume_epoch or self.extend_training:
+            model, optimizer, scheduler, ran_epochs, train_metrics, validation_metrics, best_loss_val = load_resume_training(
+                model,
+                self.local_path(),
+                self.device,
+                self.output(),
+                optimizer=optimizer,
+                scheduler=scheduler,
+                epoch=self.resume_epoch,
+            )
+            #print(f"Memory usage after loading model, optimizer, and scheduler: {check_memory_usage():.4f} GiB")
+        else:
+            ran_epochs = 0
+            train_metrics = {"loss": [], "acc": []}
+            validation_metrics = {"loss": [], "acc": []}
+            best_loss_val = np.inf
 
-        validation_dataloader.nits_expected = len(validation_dataloader)
-        # embed()
+        
+        # TO BE IMPLEMENTED
+        #print(summary(model, input_size=model.input_dim_torchinfo, device = self.device))
+        
+        print(f'Total number of parameters: {count_parameters(model):,}')
+        
         # Training
         print("Start training on " + self.device)
-        train_loss, val_loss, train_acc, val_acc = model.train_model(
+        train_metrics, validation_metrics = model.train_model(
             training_dataloader,
             validation_dataloader,
             self.local_path(),
+            loss_function,
             device=self.device,
             attack=attack,
             optimizer=optimizer,
+            scheduler=scheduler,
+            batch_lr=batch_lr,
+            best_loss_val=best_loss_val,
             nepochs=self.epochs,
             resume_epochs=ran_epochs,
-            class_weights=class_weights,
-            attack_magnitude=self.attack_magnitude,
-            attack_iterations=self.attack_iterations,
+            train_metrics=train_metrics,
+            validation_metrics=validation_metrics,
+            terminal_plot = self.terminal_plot,
+            torch_compile_mode = self.torch_compile_mode,
+            #attack_magnitude=self.attack_magnitude,
+            #attack_iterations=self.attack_iterations,
         )
-        train_loss = np.concatenate((train_metrics_first["loss"], train_loss))
-        train_acc = np.concatenate((train_metrics_first["acc"], train_acc))
-        validation_loss = np.concatenate((validation_metrics_first["loss"], val_loss))
-        validation_acc = np.concatenate((validation_metrics_first["acc"], val_acc))
-
-        print("Training finished. Saving data...")
-
-        np.savez(
-            self.output()["training_metrics"].path,
-            loss=train_loss,
-            acc=train_acc,
-            allow_pickle=True,
-        )
-        np.savez(
-            self.output()["validation_metrics"].path,
-            loss=validation_loss,
-            acc=validation_acc,
-            allow_pickle=True,
-        )
-        plot_losses(
-            train_loss,
-            val_loss,
-            output_dir=self.local_path(),
-            epochs=self.epochs + self.extend_training,
-        )
-
+        
+        if 'loss' in train_metrics.keys():
+            plot_losses(
+                train_metrics['loss'], 
+                validation_metrics['loss'], 
+                self.local_path(), 
+                ran_epochs, 
+                self.epochs
+            )
+        if 'acc' in train_metrics.keys():
+            plot_accuracy(
+                train_metrics['acc'], 
+                validation_metrics['acc'], 
+                self.local_path(), 
+                ran_epochs, 
+                self.epochs
+            )
         print("Training finished.")

@@ -1,4 +1,5 @@
 import luigi
+import law
 from rich.console import Console
 
 from utils.config.config_loader import ConfigLoader
@@ -47,11 +48,48 @@ class TrainingDependency(object):
     epochs = luigi.IntParameter(default=1)
     model_name = luigi.Parameter()
     n_threads = luigi.IntParameter(
-        default=4, description="Number of threads to use for dataloader."
+        default=4, description="Number of threads to use for dataloader. Default: 4"
     )
-    batch_size = luigi.IntParameter(default=1000)
-    learning_rate = luigi.FloatParameter(default=0.0001)
-
+    batch_size = luigi.IntParameter(default=1024)
+    learning_rate = luigi.FloatParameter(default=1e-3)
+    optimizer = luigi.Parameter(
+        default="AdamW",
+        description="The optimizer to minimize loss. Default: AdamW",
+    )
+    loss_function = luigi.Parameter(
+        default="CrossEntropyLoss",
+        description="The loss function to be used in training NN. Default: CrossEntropyLogCosh",
+    )
+    betas = law.CSVParameter(
+        cls=luigi.FloatParameter,
+        default=(0.95, 0.999),
+        description="The comma-separated list of coefficients betas for optimizer (if applicable). Default: (0.95, 0.999)",
+    )
+    eps = luigi.FloatParameter(
+        default=1e-6,
+        description="The epsilon to use in optimizer. Default: 1e-6"
+    )
+    lr_scheduler = luigi.Parameter(
+        default="epoch_lin_decay",
+        description="The learning rate scheduler. Default: epoch_lin_decay",
+    )
+    lr_decay_factor = luigi.FloatParameter(
+        default=1e-2,
+        description="The factor to decrease the learning rate using scheduler. Default: 1e-2"
+    )
+    mixed_precision = luigi.BoolParameter(
+        default=False,
+        description="Decides whether to use Automatic Mixed Precision for training PyTorch models. Default: False",
+    )
+    use_torch_compile = luigi.BoolParameter(
+        default=False,
+        description="Decides whether to use torch.compile for acceleration of PyTorch training. Default: False",
+    )
+    torch_compile_mode = luigi.Parameter(
+        default="default",
+        description="The mode for torch.compile if used. Default: default",
+    )
+    
     def store_parts(self):
         parts = super().store_parts()
 

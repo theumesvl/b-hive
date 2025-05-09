@@ -26,6 +26,7 @@ bins_eta:
 - -1.5
 - -1.0
 - -0.5
+- 0.0
 - 0.5
 - 1
 - 1.5
@@ -52,7 +53,6 @@ global_features:
 - "TagVarCSV_jetNSelectedTracks"
 - "TagVarCSV_jetNTracksEtaRel"
 
-n_cpf_candidates: 25
 cpf_candidates:
 - "Cpfcan_BtagPf_trackEtaRel"
 - "Cpfcan_BtagPf_trackPtRel"
@@ -70,8 +70,11 @@ cpf_candidates:
 - "Cpfcan_puppiw"
 - "Cpfcan_chi2"
 - "Cpfcan_quality"
+- "Cpfcan_pt"
+- "Cpfcan_eta"
+- "Cpfcan_phi"
+- "Cpfcan_e"
 
-n_npf_candidates: 25
 npf_candidates:
 - "Npfcan_ptrel"
 - "Npfcan_deltaR"
@@ -79,10 +82,12 @@ npf_candidates:
 - "Npfcan_HadFrac"
 - "Npfcan_drminsv"
 - "Npfcan_puppiw"
+- "Npfcan_pt"
+- "Npfcan_eta"
+- "Npfcan_phi"
+- "Npfcan_e"
 
-n_vtx_features: 4
 vtx_features:
-- "sv_pt"
 - "sv_deltaR"
 - "sv_mass"
 - "sv_ntracks"
@@ -94,6 +99,14 @@ vtx_features:
 - "sv_d3dsig"
 - "sv_costhetasvpv"
 - "sv_enratio"
+- "sv_pt"
+- "sv_eta"
+- "sv_phi"
+- "sv_e"
+
+n_cpf_candidates: 26
+n_npf_candidates: 25
+n_vtx_candidates: 5
 
 truths:
 - "isB"
@@ -104,8 +117,7 @@ truths:
 - "isC"
 - "isCC"
 - "isGCC"
-- "isU"
-- "isD"
+- "isUD"
 - "isS"
 - "isG"
 

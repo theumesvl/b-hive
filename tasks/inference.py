@@ -1,6 +1,6 @@
-import law
 from tasks.base import BaseTask
 from tasks.dataset import DatasetConstructorTask
+from tasks.training import TrainingTask
 from tasks.parameter_mixins import (
     AttackDependency,
     DatasetDependency,
@@ -8,25 +8,27 @@ from tasks.parameter_mixins import (
     TestDatasetDependency,
     TrainingDependency,
 )
-from tasks.training import TrainingTask
+
 from utils.adversarial_attacks.pick_attack import pick_attack
 from utils.config.config_loader import ConfigLoader
 from utils.models.models import BTaggingModels
 from utils.plotting.termplot import terminal_roc
+from utils.torch.DatasetLoader import DatasetLoader
+from utils.loss.LossFunctionLoader import LossFunctionLoader
 
+import os
+import lz4.frame
 import law
-
 
 def import_libraries():
     from torch.utils.data import DataLoader
     import torch
     import numpy as np
 
-    return DataLoader, torch, np
+    return DataLoader, torch, np 
 
 
 import warnings
-
 warnings.filterwarnings(
     "ignore",
     category=FutureWarning,
@@ -35,7 +37,6 @@ warnings.filterwarnings(
 
 # to make formatters work
 law.contrib.load("numpy")
-
 
 class InferenceTask(
     TestAttackDependency,
@@ -59,11 +60,11 @@ class InferenceTask(
 
     def output(self):
         return {
-            # # # "output_root": self.local_target("output.root"),
             "prediction": self.local_target("prediction.npy"),
             "process": self.local_target("process.npy"),
             "truth": self.local_target("truth.npy"),
             "kinematics": self.local_target("kinematics.npy"),
+            "inference_time": self.local_target("inference_time.npy"),
             # "inference_writeout": self.local_target("inference_feature_writeout.parquet"),
         }
 
@@ -77,15 +78,18 @@ class InferenceTask(
         # Model Defintion
         print("Build Model")
         print(self.model_name)
-        if issubclass(type(BTaggingModels(self.model_name)), torch.nn.Module):
-            model = BTaggingModels(self.model_name).to(self.device)
+        if issubclass(type(model := BTaggingModels(self.model_name, config)), torch.nn.Module):
+            model = model.to(self.device)
+            model.create_integers_defaults()
+            model.create_feature_shapes()
+            model.mixed_precision = self.mixed_precision
+            model.use_torch_compile = self.use_torch_compile
             best_model = torch.load(
                 self.input()["training"]["best_model"].path,
                 map_location=torch.device(self.device),
             )
             model.load_state_dict(best_model["model_state_dict"])
         else:
-            model = BTaggingModels(self.model_name)
             model.model = keras.models.load_model(
                 self.input()["training"]["best_model"].path,
                 custom_objects=model.custom_objects,
@@ -100,10 +104,14 @@ class InferenceTask(
             + "epsilons/"
         )
 
+        feature_keys = [
+            config[name] if name in config.keys() else [] 
+            for name in ['global_features', 'cpf_candidates', 'npf_candidates', 'vtx_features']
+        ]
         attack = pick_attack(
             attack=self.test_attack,
             device=self.device,
-            input_keys=model.feature_keys,
+            input_keys=feature_keys,
             integer_positions=model.integers,
             default_values=model.defaults,
             epsilon=self.test_attack_magnitude,
@@ -117,41 +125,56 @@ class InferenceTask(
             store_path=self.local_path(""),
             uncertainty=self.test_attack_uncertainty,
         )
-        attack = torch.compile(attack, mode="max-autotune")
+        #attack = torch.compile(attack, mode="max-autotune")
 
         print("Loading Dataset")
         files = self.input()["test_dataset"]["file_list"].load().split("\n")
 
-        histogram_test = self.input()["test_dataset"]["histogram"].load(
-            formatter="numpy", allow_pickle=True
-        )
+        # protection if the last line in processed_files.txt is empty
+        if not os.path.exists(files[-1]):
+            files = files[:-1]
 
         print("Initialize datasets")
-        datasetClass = model.datasetClass
+        datasetClass = DatasetLoader(config["dataset"])
+        weights_file = (
+            self.input()["test_dataset"]["file_list"].path.strip("processed_files.txt") + "weights.lz4"
+        )
+        if config.get("processor", "PFCandidateAndVertexProcessing") == "LZ4FP16Processing":
+            dtype = np.float16
+        else:
+            dtype = np.float32
+        with lz4.frame.open(weights_file, mode='r') as fp:
+            output_data = fp.read()
+            weights = np.frombuffer(output_data, dtype=dtype).astype('float32')
+        chunk_size = int(len(weights) / len(files))
+        expected_test_number_of_batches = int((chunk_size * len(files)) // self.batch_size)
         test_data = datasetClass(
             files,
             model,
+            all_number_of_samples = chunk_size * len(files),
+            config_truths=list(config['truths']),
             data_type="test",
-            histogram_training=histogram_test,
             bins_pt=config["bins_pt"],
             bins_eta=config["bins_eta"],
             verbose=self.verbose,
+            config=config,
+            batch_size=self.batch_size,
         )
         test_dataloader = DataLoader(
             test_data,
-            batch_size=self.batch_size,
+            batch_size = self.batch_size if config["dataset"] not in {"LZ4FP16Dataset", "LZ4Dataset", "LZ4PAIReDDataset"} else None,
             num_workers=self.n_threads,
-            pin_memory=True,
+            pin_memory=True,  # Pin Memory for faster CPU/GPU memory load
         )
+        test_dataloader.nits_expected = expected_test_number_of_batches
 
+        loss_function = LossFunctionLoader(self.loss_function)
+        
         print("Start inference on", self.device)
-        predictions, truths, kinematics, processes = model.predict_model(
-            test_dataloader, self.device, attack=attack ##writeout_path=self.output()["inference_writeout"].path
+
+        predictions, truths, kinematics, processes, inference_time = model.predict_model(
+            test_dataloader, self.output(), loss_function, self.device, attack=attack
         )
-
-        np.save(self.output()["kinematics"].path, kinematics)
-        np.save(self.output()["prediction"].path, predictions)
-        np.save(self.output()["process"].path, processes)
-        np.save(self.output()["truth"].path, truths)
-
-        terminal_roc(predictions, truths, title="Inference ROC")
+        
+        if(self.terminal_plot):
+            terminal_roc(predictions, truths, title="Inference ROC")

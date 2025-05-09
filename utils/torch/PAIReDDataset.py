@@ -21,6 +21,8 @@ class PAIReDDataset(IterableDataset):
         bins_pt=None,
         bins_eta=None,
         verbose=0,
+        batch_size=512,
+        **kwargs
     ):
         self.verbose = verbose
         self.files = files
@@ -41,6 +43,7 @@ class PAIReDDataset(IterableDataset):
             else:
                 self.all_number_of_samples = 0
         self.weighted_sampling = weighted_sampling
+        self.batch_size = batch_size
 
         self.device = device
         self.model = model

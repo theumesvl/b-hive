@@ -2,6 +2,7 @@ import awkward as ak
 import numpy as np
 from functools import reduce
 from typing import List
+import operator
 
 
 def join_struct_arrays(*arrs):
@@ -125,6 +126,27 @@ def structured_custom_array_from_tree(
                 )
     return arr
 
+# Helper function: interpret a condition (raw scalar or dict like {">": 0})
+def matches_condition(branch_values, condition):
+    """
+    Returns a boolean array specifying which events match the condition.
+    """
+    # Simple operator lookup
+    OPERATORS = {
+        "==": operator.eq,
+        "!=": operator.ne,
+        ">":  operator.gt,
+        "<":  operator.lt,
+        ">=": operator.ge,
+        "<=": operator.le,
+    }
+    # If condition is just a scalar, do equality check
+    if not isinstance(condition, dict):
+        return branch_values == condition
+
+    # Otherwise parse operator and threshold
+    (op_key, threshold), = condition.items()  # e.g. {">": 0} -> op_key=">", threshold=0
+    return OPERATORS[op_key](branch_values, threshold)
 
 def structured_array_from_tree_truth_from_dict(
     events=None,
@@ -150,7 +172,10 @@ def structured_array_from_tree_truth_from_dict(
                     (
                         reduce(
                             np.logical_or,
-                            ((events[flav_branch] == value for value in values)),
+                            (
+                                matches_condition(events[flav_branch], value)
+                                for value in values
+                            ),
                         )
                         for flav_branches in truth_config
                         for flav_branch, values in flav_branches.items()

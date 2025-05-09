@@ -5,6 +5,19 @@ import torch
 torch.multiprocessing.set_sharing_strategy("file_system")
 torch.set_float32_matmul_precision("medium")
 
+def make_tensor(value, device, pin_memory_cpu=True):
+    try:
+        if device == 'cpu' and pin_memory_cpu:
+            return torch.tensor(value, pin_memory=True)
+        else:
+            return torch.tensor(value).to(device)
+    except RuntimeError as e:
+        if 'pin_memory' in str(e):
+            # Fallback: silently ignore pin_memory if unsupported
+            return torch.tensor(value).to(device)
+        else:
+            raise
+
 
 class Attacks:
     def __init__(
@@ -28,14 +41,15 @@ class Attacks:
         super(Attacks, self).__init__(**kwargs)
         self.device = device
         self.work_dir = store_path
-        self.torch_zero = torch.tensor(0.0, device=self.device, pin_memory=True)
-        self.torch_one = torch.tensor(1.0, device=self.device, pin_memory=True)
-        self.torch_inf = torch.tensor(float("inf"), device=self.device, pin_memory=True)
-        self.number_classes = torch.tensor(
-            number_classes, device=self.device, pin_memory=True
-        )
+        
+        self.torch_zero = make_tensor(0.0, self.device)
+        self.torch_one = make_tensor(1.0, self.device)
+        self.torch_inf = make_tensor(float("inf"), self.device)
+        self.number_classes = make_tensor(number_classes, self.device)
+        self.epsilon = make_tensor(epsilon, self.device)
+            
         self.input_keys = input_keys
-        self.epsilon = torch.tensor(epsilon, device=self.device, pin_memory=True)
+        
         if epsilon_factors:
             self.epsilons_per_feature = [
                 torch.from_numpy(
@@ -61,10 +75,8 @@ class Attacks:
         self.defaults = [
             default.to(self.device, non_blocking=True) for default in default_values
         ]
-        self.overshoot = torch.tensor(overshoot, device=self.device, pin_memory=True)
-        self.uncertainty = torch.tensor(
-            uncertainty, device=self.device, pin_memory=True
-        )
+        self.overshoot = make_tensor(overshoot, self.device)
+        self.uncertainty = make_tensor(uncertainty, self.device)
 
     def nominal(self, inputs, truth, model, criterion):
         return *inputs, truth
@@ -136,9 +148,9 @@ class Attacks:
                 ((nominal - adversarial) / (scaler * uncertainty)) ** 2
             )
         summation /= (
-            torch.tensor(model.feature_edges[-1]).to(self.device, non_blocking=True)
-            * batch_size
+            model.feature_edges[-1].clone().detach().to(self.device, non_blocking=True) * batch_size
         )
+
         return summation
 
     def pgd(self, inputs, truth, model, criterion):
@@ -155,10 +167,9 @@ class Attacks:
                 .to(self.device, non_blocking=True)
                 .requires_grad_(True)
             )
-        
-        for i in range(self.iterations):
-            prediction = model.forward(*adversarial_inputs)
 
+        for i in range(self.iterations):
+            prediction = model.forward(tuple(adversarial_inputs))
             loss = criterion(prediction, truth).mean()
 
             model.zero_grad(set_to_none=True)
@@ -167,8 +178,10 @@ class Attacks:
             with torch.no_grad():
                 gradients = []
                 for input in adversarial_inputs:
-                    gradients.append(input.grad.detach().sign())
-
+                    if input.grad is not None:
+                        gradients.append(input.grad.detach().sign())
+                    else:
+                        gradients.append(torch.zeros_like(input).to(self.device))
                 deltas = []
                 for input, alpha, gradient in zip(
                     adversarial_inputs, alphas, gradients
@@ -190,10 +203,8 @@ class Attacks:
 
     # Code adapted from https://github.com/LTS4/DeepFool, based on https://arxiv.org/pdf/1511.04599.pdf
     def jetfool(self, inputs, truth, model, criterion):
-        batch_size = torch.tensor(
-            inputs[0].shape[0], device=self.device, pin_memory=True
-        )
-        prediction = model.forward(*inputs)
+        batch_size = make_tensor(inputs[0].shape[0], self.device)
+        prediction = model.forward(inputs)
         I = torch.argsort(prediction, dim=1, descending=True)
         label = I[:, 0]
 
@@ -213,7 +224,7 @@ class Attacks:
 
         loop = 0
 
-        fs = model.forward(*adversarial_inputs)
+        fs = model.forward(adversarial_inputs)
 
         k_i = label
 
@@ -228,11 +239,15 @@ class Attacks:
 
             original_gradients = []
             for input in adversarial_inputs:
-                original_gradients.append(input.grad.clone())
+                if input.grad is not None:
+                    original_gradients.append(input.grad.clone())
+                else:
+                    original_gradients.append(torch.zeros_like(input).to(self.device))
 
             for c in range(1, self.number_classes):
                 for input in adversarial_inputs:
-                    input.grad.zero_()
+                    if input.grad is not None:
+                        input.grad.zero_()
 
                 fs_sorted[:, c].backward(
                     gradient=torch.ones(batch_size, device=self.device),
@@ -241,7 +256,10 @@ class Attacks:
 
                 adversarial_gradients = []
                 for input in adversarial_inputs:
-                    adversarial_gradients.append(input.grad.clone())
+                    if input.grad is not None:
+                        adversarial_gradients.append(input.grad.clone())
+                    else:
+                        adversarial_gradients.append(torch.zeros_like(input).to(self.device))
 
                 w_cs = []
                 for original_gradient, adversarial_gradient in zip(
@@ -306,7 +324,7 @@ class Attacks:
                     nominal_input + (1 + self.overshoot) * r_tot * self.epsilon
                 ).requires_grad_(True)
 
-            fs = model.forward(*adversarial_inputs)
+            fs = model.forward(adversarial_inputs)
             k_i = torch.argmax(fs, axis=1)
 
             loop += 1
@@ -322,9 +340,7 @@ class Attacks:
         softmax = torch.nn.Softmax(dim=-1)
         masks = self.create_default_integer_mask(inputs)
         min_loss = self.torch_inf
-        batch_size = torch.tensor(
-            inputs[0].shape[0], device=self.device, pin_memory=True
-        )
+        batch_size = make_tensor(inputs[0].shape[0], self.device)
 
         goal_score = (
             1
@@ -352,13 +368,13 @@ class Attacks:
 
         objective_score = []
         for i in range(self.iterations):
-            adversarial_prediction = softmax(model.forward(*adversarial_inputs))
+            adversarial_prediction = softmax(model.forward(adversarial_inputs))
             constraints = self.optimizer_constraints(
                 inputs,
                 adversarial_inputs,
                 self.uncertainty,
                 model,
-                batch_size,
+                batch_size,            
             )
             objective = constraints - torch.mean(
                 (goal_score - adversarial_prediction) ** 2

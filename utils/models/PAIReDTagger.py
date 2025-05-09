@@ -764,6 +764,7 @@ class PAIReDTagger(nn.Module):
     #@profile
     def __init__(
         self,
+        config,
         num_classes=3,
         num_enc=3,
         num_head=8,
