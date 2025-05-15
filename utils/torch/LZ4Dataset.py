@@ -79,9 +79,6 @@ class LZ4Dataset(IterableDataset):
 
             s = np.random.permutation(s)
 
-            if self.verbose:
-                print(f"Keeping {np.sum(mask)}/{len(mask)} events")
-
             truths = np.zeros(s.shape[0])
             labels = s[:,-(self.num_ele+1):-1]
             for index, (name, flavours) in enumerate(self.model.classes.items()):
