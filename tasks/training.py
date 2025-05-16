@@ -164,37 +164,28 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
 
     def run(self):
         DataLoader, torch, np, pick_attack, plot_roc_list, plot_losses, plot_accuracy, SchedulerLoader, OptimizerLoader, DatasetLoader, Module = import_libraries()
+        
         self.set_device()
-        # with memray.Tracker("/net/scratch_cms3a/uwillemsen/condor/b-hive/output/memory_screening/half_training_interactive_data_04_60GB.bin"): #full_training_data_04_cs50000/full_training_high_ram_01_v1_eps10.bin
-        #     print("Allocations will be tracked until the with block ends")
-        # enable memory history, which will
-        # add tracebacks and event history to snapshots
-        # torch.cuda.memory._record_memory_history()
-        time_0 = time.time()
-        # Loading config
+        
+        # Load config
         config = ConfigLoader.load_config(self.config)
 
-        #print(f"Memory usage at beginning of TrainingTask(): {check_memory_usage():.4f} GiB")
-
+        # Load files
         os.makedirs(self.local_path(), exist_ok=True)
         print("Loading Dataset")
         files = self.input()["file_list"].load().split("\n")
         if not os.path.exists(files[-1]):
             files = files[:-1]
 
+        # Split into train/val sets
         assert (self.train_val_split <= 1) and (self.train_val_split >= 0), "train_val_split should be between 0 and 1!"
-        n_train = max(
-            (1, int(len(files) * self.train_val_split))
-        )  # has at least one training file
+        n_train = max((1, int(len(files) * self.train_val_split)))  # has at least one training file
         training_files = files[:n_train]
         validation_files = files[n_train:]
         if len(validation_files) == 0:
             print("\nWARNING!")
-            print(
-                "No validation files found. Please check your dataset. Most likely you only have one file!"
-            )
-            print("Using the training file for validation")
-            print()
+            print("No validation files found. Please check your dataset. Most likely you only have one file!")
+            print("Using the training file for validation\n")
             validation_files = training_files
         if not (isinstance(training_files, list)):
             training_files = [training_files]
@@ -203,23 +194,18 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         print(f"#Train files: {len(training_files)}")
         print(f"#Val files: {len(validation_files)}")
         
+        # Reweighing
         histogram_training = np.load(
             self.input()["histogram"].path,
             allow_pickle=True,
         )
-
         if self.loss_weighting:
-            class_weights = 1 / (
-                np.sum(np.sum(histogram_training, axis=1), axis=1)
-                / (np.sum(histogram_training))
-            )
+            class_weights = histogram_training.sum() / histogram_training.sum(axis=(1, 2))
             class_weights = torch.from_numpy(class_weights).to(self.device)
+            print("Using loss weighting.")
             print("Class weights: ", class_weights)
-            print(
-                "Number of class members: ",
-                np.sum(np.sum(histogram_training, axis=1), axis=1),
-            )
-            print("Total number of members: ", np.sum(histogram_training))
+            print(f"Number of class members: {histogram_training.sum(axis=(1, 2))}")
+            print(f"Total number of members: {np.sum(histogram_training)}")
         else:
             print("Using weighted sampling")
             class_weights = None
@@ -240,16 +226,10 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             )
         else:
             optimizer = model.optimizer
-
-        #print(f"Memory usage after initializing model, optimizer, and scheduler: {check_memory_usage():.4f} GiB")
         
-        # Picking attack
-        print(
-            rf"Applying {self.attack} attack (attack_magnitude={self.attack_magnitude}, n_iterations={self.attack_iterations}, attack_uncertainty={self.attack_uncertainty})."
-        )
-        epsilon_dir = (
-            self.input()["file_list"].path.strip("processed_files.txt") + "epsilons/"
-        )
+        # Pick attack
+        print(rf"Applying {self.attack} attack (attack_magnitude={self.attack_magnitude}, n_iterations={self.attack_iterations}, attack_uncertainty={self.attack_uncertainty}).")
+        epsilon_dir = self.input()["file_list"].path.strip("processed_files.txt") + "epsilons/"
 
         feature_keys = []
         for name_fts in ['global_features', 'cpf_candidates', 'npf_candidates', 'vtx_features']:
@@ -276,15 +256,11 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             uncertainty=self.attack_uncertainty,
         )
         #attack = torch.compile(attack, mode="max-autotune")
-
-        #print(f"Memory usage before datasets loading: {check_memory_usage():.4f} GiB")
         
         print("Dataset construction")
         datasetClass = DatasetLoader(config["dataset"])
 
-        weights_file = (
-            self.input()["file_list"].path.strip("processed_files.txt") + "weights.lz4"
-        )
+        weights_file = self.input()["file_list"].path.strip("processed_files.txt") + "weights.lz4"
         if config.get("processor") == "LZ4FP16Processing":
             dtype = np.float16
         else:
