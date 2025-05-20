@@ -229,8 +229,8 @@ def run_parallel_all(
 
 class InputHistogrammerTask(DatasetDependency, BaseTask):
     Nbins = luigi.IntParameter(
-        default = 20, 
-        description="Number of bins for histogramm"
+        default = 50, 
+        description="Number of bins for histogramm. Default: 50"
     )
     n_workers = luigi.IntParameter(
         default=-1, 
@@ -287,8 +287,8 @@ class InputHistogrammerTask(DatasetDependency, BaseTask):
 
 class HistogramPlotterTask(InputHistogrammerTask, DatasetDependency, BaseTask):
     ylog = luigi.BoolParameter(
-        default=False,
-        description="If to use y log scale for histogram plotting. Default: False"
+        default=True,
+        description="If to use y log scale for histogram plotting. Default: True"
     )
 
     def requires(self):
@@ -358,13 +358,16 @@ class HistogramPlotterTask(InputHistogrammerTask, DatasetDependency, BaseTask):
                     edges = np.concatenate((centers - delta/2,
                                             [centers[-1] + delta/2]))
                     
-                    fig, ax = plt.subplots()
+                    fig, ax = plt.subplots(constrained_layout=True)
                     ax.bar(
                         edges[:-1],       # left edge of each bar
                         data,
                         width=delta,      # constant width
                         align='edge',
                         edgecolor='black',
+                        linewidth=.4, 
+                        facecolor='royalblue', 
+                        alpha=.85
                     )
                     ax.set(
                         xlabel = feature,
@@ -374,7 +377,10 @@ class HistogramPlotterTask(InputHistogrammerTask, DatasetDependency, BaseTask):
                     )
                     if self.ylog:
                         ax.set_yscale("log")
-                    ax.grid(True)
+                        
+                    ax.grid(True, which='major', linestyle=':', linewidth=.5, color='0.8')
+                    ax.grid(True, which='minor', linestyle=':', linewidth=.3, color='0.9')
+
                     plt.savefig(self.output()[feature + "_" + cl].path)
                     plt.close()
 
