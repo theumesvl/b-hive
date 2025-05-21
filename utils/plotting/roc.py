@@ -112,6 +112,7 @@ def plot_losses(train_loss, test_loss, output_dir, ran_epochs, nepochs):
     ax.set_xlabel("Epochs")
     ax.set_ylabel("Loss")
     ax.legend()
+    ax.grid()
     fig.savefig(os.path.join(output_dir, "loss.pdf"))
     fig.savefig(os.path.join(output_dir, "loss.png"))
 
@@ -138,6 +139,7 @@ def plot_accuracy(train_acc, test_acc, output_dir, ran_epochs, nepochs):
     ax.set_xlabel("Epochs")
     ax.set_ylabel("Accuracy")
     ax.legend()
+    ax.grid()
     fig.savefig(os.path.join(output_dir, "acc.pdf"))
     fig.savefig(os.path.join(output_dir, "acc.png"))
 

@@ -33,7 +33,7 @@ class LZ4Dataset(IterableDataset):
         self.bins_eta = bins_eta
         self.Nedges = [0]
         self.data_type = data_type
-        if data_type == "validation":
+        if data_type == "validation" or data_type == "inference":
             self.data_type = "test"
        
         self.batch_size = batch_size
@@ -75,7 +75,8 @@ class LZ4Dataset(IterableDataset):
 
             if self.weighted_sampling:
                 random_number = np.random.rand(s.shape[0])
-                s = s[random_number < s[:, -1]]
+                mask = random_number < s[:, -1]
+                s = s[mask]
 
             s = np.random.permutation(s)
 
@@ -100,7 +101,7 @@ class LZ4Dataset(IterableDataset):
 
             for batch_start in range(0, num_samples, self.batch_size):
                 batch_end = min(batch_start + self.batch_size, num_samples)
-                if(batch_end - batch_start) == self.batch_size:
+                if (batch_end - batch_start) == self.batch_size:
                     yield (
                         s[batch_start:batch_end],
                         truths[batch_start:batch_end],
@@ -114,6 +115,14 @@ class LZ4Dataset(IterableDataset):
                         weights[batch_start:batch_end],
                         process[batch_start:batch_end],
                     ]
+            # last not full batch in case of validation/inference
+            if (leftover_data is not None) and (self.data_type == "test"):
+                yield (
+                    leftover_data[0],
+                    leftover_data[1],
+                    leftover_data[2],
+                    leftover_data[3],
+                )
                 
         return None
 

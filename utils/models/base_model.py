@@ -197,7 +197,7 @@ class Classifier_base(nn.Module):
         device, 
         attack=None
     ):
-        losses = []
+        losses = 0.0
         accuracy = 0.0
         self.eval()
         loss_fn = nn.CrossEntropyLoss(reduction="none")
@@ -218,7 +218,7 @@ class Classifier_base(nn.Module):
             TextColumn(f"0/{dataloader.nits_expected} its"),
             expand=True,
         ) as progress:
-            N = 1
+            N = 0
             task = progress.add_task("Inference...", total=dataloader.nits_expected)
             
             for (x, truth, w, process) in dataloader:
@@ -240,21 +240,24 @@ class Classifier_base(nn.Module):
                 processes.append(process.cpu().numpy())
                 predictions.append(pred.cpu().numpy())
 
-                losses.append(loss.item())
+                N += len(pred)
+                losses += loss.item() * len(pred)
                 accuracy += (
                     (pred.argmax(1) == truth.to(device)).type(torch.float).sum().item()
                 )
-                N += len(pred)
+                
                 progress.update(
-                    task, advance=1, description=f"Inference...   | Loss: {loss:.2f}"
+                    task, advance=1, description=f"Inference...   | Average loss: {losses/N:.4f} | Batch loss: {loss.item():.4f}"
                 )
-                progress.columns[-1].text_format = "{}/{} its".format(
-                    N // dataloader.dataset.batch_size, dataloader.nits_expected
+                progress.columns[-1].text_format = (
+                    f"{(N // dataloader.dataset.batch_size) / elapsed_column.elapsed_time:.2f} b/s | "
+                    f"{N // dataloader.dataset.batch_size}/{dataloader.nits_expected} its"
                 )
             progress.update(task, completed=dataloader.nits_expected)
        
         accuracy /= N
-        print("  ", f"Average loss: {np.array(losses).mean():.4f}")
+        losses /= N
+        print("  ", f"Average loss: {losses:.4f}")
         print("  ", f"Average accuracy: {float(100*accuracy):.4f}")
         
         predictions = np.concatenate(predictions)
@@ -345,29 +348,34 @@ class Classifier_base(nn.Module):
       
                 losses += loss.item()
                 accuracy += (
-                    (pred.argmax(1) == truth.to(device)).type(torch.float).sum().item()
+                    (pred.argmax(1) == truth.to(device)).type(torch.float).mean().item()
                 )
 
-                N += len(pred)
                 curr_lr = optimizer.param_groups[0]['lr']
                 progress.update(
-                    task, advance=1, description=f"Training...   | Loss: {loss:.4f}, lr: {curr_lr:.5f}"
+                    task, advance=1, description=f"Training...   | Average loss: {losses/(b+1):.4f} | Batch loss: {loss.item():.4f} | lr: {curr_lr:.5f}"
                 )
-                progress.columns[-1].text_format = "{}/{} its".format(
-                    N // dataloader.dataset.batch_size, f"~{dataloader.nits_expected}"
-                )
+                progress.columns[-1].text_format = f"Speed: {(b + 1)/elapsed_column.elapsed_time:.1f} b/s | {b + 1}/~{dataloader.nits_expected} its"
             progress.update(task, completed=dataloader.nits_expected)
 
             if (not batch_lr) and (scheduler is not None):
                 scheduler.step()
-        #dataloader.nits_expected = N // dataloader.batch_size
-        accuracy /= N
-        print("  ", f"Average loss: {losses/(b+1):.4f}")
+
+        accuracy /= (b+1)
+        losses /= (b+1)
+        print("  ", f"Average loss: {losses:.4f}")
         print("  ", f"Average accuracy: {float(100*accuracy):.4f}")
 
-        return losses/(b+1), float(accuracy), elapsed_column.elapsed_time
+        return losses, float(accuracy), elapsed_column.elapsed_time
 
-    def validate_model(self, dataloader, loss_fn, device="cpu", verbose=True, terminal_plot=False):
+    def validate_model(
+        self, 
+        dataloader, 
+        loss_fn, 
+        device="cpu", 
+        verbose=True, 
+        terminal_plot=False
+    ):
         losses = 0.0
         accuracy = 0.0
         self.eval()
@@ -387,9 +395,9 @@ class Classifier_base(nn.Module):
             TextColumn(f"0/~{dataloader.nits_expected} its"),
             expand=True,
         ) as progress:
-            N = 1
+            N = 0
             task = progress.add_task("Validation...", total=dataloader.nits_expected)
-            for b, (x, truth, w, process) in enumerate(dataloader):
+            for (x, truth, w, process) in dataloader:
 
                 x = x.float().to(device, non_blocking=True)
                 truth = truth.type(torch.LongTensor).to(device, non_blocking=True)
@@ -407,7 +415,7 @@ class Classifier_base(nn.Module):
                         if torch.isnan(loss).any():
                             raise ValueError("Loss contains NaN values! Something's wrong with calculation, please check.")
                         
-                    losses += loss.item()
+                    losses += loss.item() * len(pred)
 
                     accuracy += (
                         (pred.argmax(1) == truth.to(device))
@@ -422,22 +430,23 @@ class Classifier_base(nn.Module):
                     
                 N += len(pred)
                 progress.update(
-                    task, advance=1, description=f"Validation... | Loss: {loss:.2f}"
+                    task, advance=1, description=f"Validation... | Average loss: {losses/N:.4f} | Batch loss: {loss.item():.4f}"
                 )
-                progress.columns[-1].text_format = "{}/{} its".format(
-                    N // dataloader.dataset.batch_size, f"~{dataloader.nits_expected}"
+                progress.columns[-1].text_format = (
+                    f"{(N // dataloader.dataset.batch_size) / elapsed_column.elapsed_time:.2f} b/s | "
+                    f"{N // dataloader.dataset.batch_size}/~{dataloader.nits_expected} its"
                 )
             progress.update(task, completed=dataloader.nits_expected)
-        dataloader.nits_expected = N // dataloader.dataset.batch_size
         accuracy /= N
-        print("  ", f"Validation loss: {losses/(b+1):.4f}")
+        losses /= N
+        print("  ", f"Validation loss: {losses:.4f}")
         print("  ", f"Validation accuracy: {float(100*accuracy):.4f}")
 
         if verbose and terminal_plot:
             print("Printing terminal ROC")
             terminal_roc(predictions, truths, title="Validation ROC")
 
-        return losses/(b+1), float(accuracy), elapsed_column.elapsed_time
+        return losses, float(accuracy), elapsed_column.elapsed_time
 
 
     def _subselect_features(self, tensor, name_fts, custom_name_fts):

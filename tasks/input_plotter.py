@@ -1,8 +1,13 @@
 import itertools
+import subprocess
 import os
+import lz4.frame
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import luigi
 import matplotlib.pyplot as plt
+import mplhep as hep
+import matplotlib as mpl
 import numpy as np
 from rich.progress import (
     BarColumn,
@@ -13,141 +18,278 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 from tqdm import tqdm
+import psutil
 
 from tasks.base import BaseTask
 from tasks.dataset import DatasetConstructorTask
 from tasks.parameter_mixins import DatasetDependency
 from utils.config.config_loader import ConfigLoader
 
+def get_feature_keys(config):
+    feature_keys = {}
+    for name_fts in ['global_features', 'cpf_candidates', 'npf_candidates', 'vtx_features']:
+        if name_fts in config:
+            for feature in config[name_fts]:
+                feature_keys[feature] = name_fts
+    return feature_keys
+
+def safe_reshape(arr: np.ndarray, second_dim: int) -> np.ndarray:
+    """
+    Reshape `arr` to (N, second_dim, ?).
+    If either `arr` is empty or `second_dim` is 0, return
+    an array shaped (N, 0, 0) so the code keeps running.
+    """
+    if arr.size == 0 or second_dim == 0:
+        # N = arr.shape[0]; keep dtype and contiguous layout
+        return arr.reshape(arr.shape[0], 0, 0)
+    else:
+        # let NumPy infer the last axis
+        return arr.reshape(arr.shape[0], second_dim, -1)
+        
+def calculate_feature_length(config, base_key, custom_key=None):
+    base_length = 0
+    if base_key in config:
+        base_length += len(config[base_key])
+    if custom_key and custom_key in config:
+        base_length += len(config[custom_key])
+    return base_length
+
+def create_feature_shapes(config):
+    # Constructions of input shape from config.yaml file
+    len_glob_fts_full = calculate_feature_length(config, 'global_features', 'global_custom_features')
+    len_cpf_fts_full = calculate_feature_length(config, 'cpf_candidates', 'cpf_custom_features')
+    len_npf_fts_full = calculate_feature_length(config, 'npf_candidates', 'npf_custom_features')
+    len_vtx_fts_full = calculate_feature_length(config, 'vtx_features', 'vtx_custom_features')
+    
+    input_dims = [
+        (1,                          len_glob_fts_full),
+        (config['n_cpf_candidates'], len_cpf_fts_full),
+        (config['n_npf_candidates'], len_npf_fts_full),
+        (config['n_vtx_candidates'], len_vtx_fts_full)
+    ]
+    
+    feature_edges = []
+    v = 0
+    for dim in input_dims:
+        v += dim[0]*dim[1]
+        feature_edges.append(v)
+
+    feature_edges = np.array(feature_edges, dtype = int)
+
+    return input_dims, feature_edges[:-1]
+
+def process_one_file(file_path, config, feature_keys, feature_edges, input_dims, Nbins, weight_histo):
+    """Load a single .lz4 file, build *partial* histograms for every (proc,feature),
+    and return them as a nested dict."""
+
+    num_ele = len(config["truths"])
+    # initialize an empty set of histograms for this file
+    # 0 -- histogram
+    # 1 -- bins edges
+    partial = {truth: {feat: np.zeros((2, Nbins+2), dtype=np.float32)
+                      for feat in feature_keys}
+               for truth in config["truths"]}
+
+    # load & unpack data
+    with lz4.frame.open(file_path, mode='r') as data:
+        output_data = data.read()
+    s = np.frombuffer(output_data, dtype='float32').copy()
+    s = s[2:].reshape(-1, int(s[1]), order="C")
+    
+    if weight_histo:
+        random_number = np.random.rand(s.shape[0])
+        mask = random_number < s[:, -1]
+        s = s[mask]
+        
+    labels = s[:, -(num_ele+1):-1]
+    truths = np.argmax(labels, axis=1)    
+    weights      = s[:, -1]
+    file_process = s[:, -(num_ele+2)]
+    s            = s[:,:-(num_ele+2)]
+
+    # Split the input tensor
+    glob, cpf, npf, vtx = np.split(s, feature_edges, axis=1)
+
+    # Reshape tensors as per input dimensions
+    glob = glob.reshape(glob.shape[0], -1)
+    cpf  = safe_reshape(cpf, input_dims[1][0])
+    npf  = safe_reshape(npf, input_dims[2][0])
+    vtx  = safe_reshape(vtx, input_dims[3][0])
+    all_data = {
+        'global_features': glob, 
+        'cpf_candidates': cpf, 
+        'npf_candidates': npf, 
+        'vtx_features': vtx,
+    }
+    
+    for i_p, truth in enumerate(config['truths']):
+        selection = (truths == i_p)
+        if selection.sum() == 0:
+            continue
+            
+        for feature, name_fts in feature_keys.items():
+            samples = all_data[name_fts][selection][..., config[name_fts].index(feature)]
+            # clean zeros
+            if name_fts != 'global_features':
+                samples = samples[np.abs(samples).sum(axis=-1) != 0]
+            
+            samples = samples.flatten()
+            
+            if (partial[truth][feature] == 0).all():
+                bins = Nbins
+            else:
+                bincenters = partial[truth][feature][1]
+                delta_bin = bincenters[1] - bincenters[0]
+                bins = bincenters - delta_bin / 2
+                bins = np.append(bins, bins[-1] + delta_bin)[1:-1]  # remove overflow bins
+                
+            N, bins = np.histogram(samples, bins=bins)
+            # add overflow bins
+            N_below = (samples < bins[0]).sum()  # lower overflow bin content
+            N_above = (samples > bins[-1]).sum()  # upper overflow bin content
+            N = np.array([N_below, *N, N_above])
+            bins = np.array(
+                [
+                    bins[0] - (bins[1] - bins[0]),  # lower overflow bin
+                    *bins,
+                    bins[-1]
+                    + (bins[1] - bins[0]),  # upper overflow bin
+                ]
+            )
+            bincenters = 0.5 * (bins[:-1] + bins[1:])
+            partial[truth][feature][0] += N
+            partial[truth][feature][1] = bincenters.astype(np.float32)
+
+    return partial
+
+
+def run_parallel_all(
+    files, 
+    config, 
+    feature_keys, 
+    feature_edges, 
+    input_dims, 
+    Nbins, 
+    weight_histo, 
+    n_workers
+):
+    # initialize master histograms once
+    master = {
+      truth: {
+        feat: np.zeros((2, Nbins+2), dtype=np.float32)
+        for feat in feature_keys
+      }
+      for truth in config["truths"]
+    }
+
+    if n_workers == -1:
+        out = subprocess.check_output(["nproc"], stderr=subprocess.DEVNULL)
+        n_workers = int(out) - 1
+    print(f"n_workers = {n_workers}")
+        
+    bar_style = Progress(
+        TextColumn("{task.description}"),
+        TimeElapsedColumn(),     
+        BarColumn(bar_width=None),
+        TaskProgressColumn(),          
+        TimeRemainingColumn(),         
+        TextColumn(f"0/{len(files)} files"),
+        expand=True,
+    )
+
+    with bar_style as progress, ProcessPoolExecutor(max_workers=n_workers) as exe:
+        task = progress.add_task("Processing files...",
+                                 total=len(files),
+                                 filename="")
+
+        # submit every file to a worker
+        futures = {exe.submit(process_one_file, f,
+                              config, feature_keys,
+                              feature_edges, input_dims, Nbins, weight_histo): f
+                   for f in files}
+
+        # merge as soon as each future finishes
+        count = 0
+        for fut in as_completed(futures):
+            file = futures[fut]
+            progress.update(task, filename=file.split('/')[-1])
+            count += 1
+            progress.columns[-1].text_format = f"{count}/{len(files)} files"
+
+            partial = fut.result()          # may raise; let it bubble up
+            for truth in partial:
+                for feat in partial[truth]:
+                    master[truth][feat][0] += partial[truth][feat][0]
+                    master[truth][feat][1]  = partial[truth][feat][1]
+
+            progress.advance(task)
+
+    return master
+
 
 class InputHistogrammerTask(DatasetDependency, BaseTask):
-    config = luigi.Parameter()
-
+    Nbins = luigi.IntParameter(
+        default = 50, 
+        description="Number of bins for histogramm. Default: 50"
+    )
+    n_workers = luigi.IntParameter(
+        default=-1, 
+        description="Number of workers to create histograms. Default: (nproc - 1)"
+    )
+    weight_histo = luigi.BoolParameter(
+        default=False,
+        description="If to build histogram with weights. Default: False"
+    )
+    
     def requires(self):
         return DatasetConstructorTask.req(
             self, dataset_version=self.dataset_version, config=self.config
         )
 
     def output(self):
-        processes = ConfigLoader.load_config(self.config)["processes"]
-        attributes = [process + "_hist.npz" for process in processes]
-        return {
-            key: self.local_target(attr) for (key, attr) in zip(processes, attributes)
-        }
-
+        if self.weight_histo:    
+            return self.local_target('input_histogram_weight.npz')
+        else:
+            return self.local_target('input_histogram.npz')
+    
     def run(self):
         # Create output directory
-        for file in self.output().keys():
-            self.output()[file].parent.touch()
-        # preparation
-        processes = ConfigLoader.load_config(self.config)["processes"]
+        self.output().parent.touch()
+            
+        # Load config
+        config = ConfigLoader.load_config(self.config)
+        num_ele = len(config['truths'])
+
+        # Load files
         files = self.input()["file_list"].load().split("\n")
-        Nbins = 20
-        histograms = {}
-        for proc in processes:
-            histograms[proc] = {}
-        # TODO: Replace this one with yml parsing
-        testfile = np.load(files[0], allow_pickle=True)
-        files_in_npz = testfile.files
-        dtype_names_f = {}
-        for f in files_in_npz:
-            dtype_names_f[f] = testfile[f].dtype.names
-        # The histogramming step
-        # Iterate over datafiles
-        with Progress(
-            TextColumn("{task.description}"),
-            TimeElapsedColumn(),
-            BarColumn(bar_width=None),
-            TaskProgressColumn(),
-            TimeRemainingColumn(),
-            TextColumn("{task.fields[n]}"),
-            expand=True,
-        ) as progress:
-            task_files = progress.add_task(
-                "Processing files... ", total=len(files), n=""
-            )
-            task_hists = progress.add_task(
-                "Making histograms...",
-                total=len(files_in_npz) * len(dtype_names_f),
-                n="",
-            )
-            for file in files:
-                progress.reset(task_hists)
-                progress.update(task_files, n=f"{file.split('/')[-1]}")
-                progress.update(task_hists, completed=0, n="")
-                newdata = np.load(file, allow_pickle=True)
-                for f, (pi, proc) in list(
-                    itertools.product(files_in_npz, enumerate(processes))
-                ):
-                    progress.update(task_hists, n=f"{f}/{proc}")
-                    try:
-                        dtype = [(n1, "f4") for n1 in dtype_names_f[f]]
-                        if f not in histograms[proc].keys():
-                            histograms[proc][f] = np.zeros((2, Nbins + 2), dtype=dtype)
-                        selection = newdata["process"] == pi
-                        if selection.sum() == 0:
-                            continue
-                        selected_data = newdata[f][selection]
-                        for field in dtype_names_f[f]:
-                            progress.update(task_hists, n=f"{f}/{proc}:{field}")
-                            samples = selected_data[field].ravel()
-                            if (histograms[proc][f][field][1] == 0).all():
-                                bins = Nbins
-                            else:
-                                bincenters = histograms[proc][f][field][1]
-                                Δbin = bincenters[1] - bincenters[0]
-                                bins = bincenters - Δbin / 2
-                                bins = np.append(bins, bins[-1] + Δbin)[
-                                    1:-1
-                                ]  # remove overflow bins
-                            N, bins = np.histogram(samples, bins=bins)
-                            # add overflow bins
-                            N_below = (
-                                samples < bins[0]
-                            ).sum()  # lower overflow bin content
-                            N_above = (
-                                samples > bins[-1]
-                            ).sum()  # upper overflow bin content
-                            N = np.array([N_below, *N, N_above])
-                            bins = np.array(
-                                [
-                                    bins[0] - (bins[1] - bins[0]),  # lower overflow bin
-                                    *bins,
-                                    bins[-1]
-                                    + (bins[1] - bins[0]),  # upper overflow bin
-                                ]
-                            )
-                            bincenters = 0.5 * (bins[:-1] + bins[1:])
-                            histograms[proc][f][field][0] += N
-                            histograms[proc][f][field][1] = bincenters.astype(
-                                np.float32
-                            )
-                            progress.update(task_hists, advance=1)
-                    except Exception as error:
-                        # if data is empty:
-                        if self.debug:
-                            if newdata[f].dtype.names == ():
-                                print("'()' exception in", f, file, proc)
-                                continue
-                        # if data has a single array in it, dtype is None (eg. process, weights):
-                        if newdata[f].dtype.names == None:
-                            if self.debug:
-                                print("'None' exception in", f, file, proc)
-                            continue
-                        else:
-                            raise error
-                for process in processes:
-                    np.savez(self.output()[process].path, **histograms[process])
-                progress.update(
-                    task_hists, completed=len(files_in_npz) * len(dtype_names_f)
-                )
-                progress.update(task_files, advance=1)
+        if not os.path.exists(files[-1]):
+            files = files[:-1]
+
+        feature_keys = get_feature_keys(config)
+        input_dims, feature_edges = create_feature_shapes(config)
+
+        histograms = run_parallel_all(
+            files, config, 
+            feature_keys, 
+            feature_edges, 
+            input_dims, 
+            self.Nbins, 
+            self.weight_histo,
+            self.n_workers
+        )
+        flat_dict = {
+            f"{truth}/{feat}": histograms[truth][feat]
+            for truth in histograms
+            for feat in histograms[truth]
+        }
+        np.savez_compressed(self.output().path, **flat_dict)
 
 
-class HistogramPlotterTask(DatasetDependency, BaseTask):
-    dataset_version = luigi.Parameter()
-    config = luigi.Parameter()
-    ylog = luigi.BoolParameter(default=False)
+class HistogramPlotterTask(InputHistogrammerTask, DatasetDependency, BaseTask):
+    ylog = luigi.BoolParameter(
+        default=True,
+        description="If to use y log scale for histogram plotting. Default: True"
+    )
 
     def requires(self):
         return InputHistogrammerTask.req(
@@ -155,93 +297,100 @@ class HistogramPlotterTask(DatasetDependency, BaseTask):
         )
 
     def output(self):
-        processes = ConfigLoader.load_config(self.config)["processes"]
-        # FIXME fix loading if the previous task has no outputs yet
-        files = np.load(self.input()[list(self.input().keys())[0]].path).files
+        config = ConfigLoader.load_config(self.config)
+        classes = config["truths"]
+        feature_keys = get_feature_keys(config)
         return_dict = {}
-        for process, file in itertools.product(processes, files):
-            return_path = os.path.join(process, file, "done")
-            return_dict[process + "_" + file] = self.local_target(
-                return_path + ("_ylog" if self.ylog else "")
+        for cl, feat in itertools.product(classes, feature_keys):
+            return_path = os.path.join(feat, cl)
+            return_dict[feat + "_" + cl] = self.local_target(
+                return_path + ("_weight" if self.weight_histo else "") + ("_ylog.png" if self.ylog else ".png")
             )
         return return_dict
 
     def run(self):
+        color_set_name = "Dark2"
+        cmap = mpl.colormaps[color_set_name]  # returns a ListedColormap
+        color_set_list = cmap.colors  # type: list
+        
+        plt.style.use(hep.cms.style.CMS)
+
+        histograms = np.load(self.input().path)
+        classes = np.unique([key.split('/')[0] for key in list(histograms.keys())])
+        feature_keys = np.unique([key.split('/')[1] for key in list(histograms.keys())])
+        
         for file in self.output().keys():
             self.output()[file].parent.touch()
+            
         with Progress(
             TextColumn("{task.description}"),
             TimeElapsedColumn(),
             BarColumn(bar_width=None),
             TaskProgressColumn(),
             TimeRemainingColumn(),
-            TextColumn("{task.fields[n]}"),
+            TextColumn("{task.fields[count]}"),
             expand=True,
         ) as progress:
-            task_process = progress.add_task(
+            task_class = progress.add_task(
                 f"Processing histograms...",
-                total=len(self.input().items()),
-                n="",
+                total=len(classes),
+                count=f"0/{len(classes)}",
             )
             task_features = progress.add_task(
                 f"Processing features... ",
-                n="",
+                count="",
             )
-            task_plots = progress.add_task(
-                "Plotting histograms...",
-                n="",
-            )
-            for process, file in self.input().items():
-                histograms = np.load(file.path)
+            
+            for i_cl, cl in enumerate(classes):
                 progress.reset(task_features)
-                progress.reset(task_plots)
                 progress.update(
-                    task_process,
-                    description=f"Processing histograms for process {process:15}",
-                    n=process,
+                    task_class,
+                    description=f"Processing histograms for class {cl:<20}",
                 )
-                for attribute in histograms.files:
+                for i_f, feature in enumerate(feature_keys):
                     progress.update(
                         task_features,
-                        total=len(histograms.files),
-                        n=f"{attribute[:17]+('...' if len(attribute) >= 17 else ''):20}",
-                        description=f"Processing features in {attribute}",
+                        total=len(feature_keys),
+                        description=f"Processing features in {feature:<25}",
                     )
-                    progress.update(
-                        task_plots,
-                        completed=0,
-                        total=len(histograms[attribute].dtype.name),
+                    data, centers = histograms[f"{cl}/{feature}"]       # row 0 = counts, row 1 = bin centers
+                    delta = centers[1] - centers[0]                     # bin width
+                    edges = np.concatenate((centers - delta/2,
+                                            [centers[-1] + delta/2]))
+                    
+                    fig, ax = plt.subplots(constrained_layout=True)
+                    ax.bar(
+                        edges[:-1],       # left edge of each bar
+                        data,
+                        width=delta,      # constant width
+                        align='edge',
+                        edgecolor='black',
+                        linewidth=.4, 
+                        facecolor='royalblue', 
+                        alpha=.85
                     )
-                    for variable in histograms[attribute].dtype.names:
-                        progress.update(
-                            task_plots,
-                            total=len(histograms[attribute].dtype.names),
-                            n=f"{variable[:17]+('...' if len(variable) >= 17 else ''):20}",
-                        )
-                        N, bincenters = histograms[attribute][variable]
-                        dx = bincenters[1] - bincenters[0]
-                        plt.bar(bincenters, N, width=dx, color="C0")
-                        plt.title("Plot of " + variable + " for " + process)
-                        plt.xlabel(variable)
-                        plt.ylabel("N")
-                        if self.ylog:
-                            plt.yscale("log")
-                        plt.savefig(
-                            self.output()[process + "_" + attribute].dirname
-                            + "/"
-                            + variable
-                            + ("_log" if self.ylog else "")
-                            + ".png"
-                        )
-                        plt.close()
-                        progress.update(task_plots, advance=1)
+                    ax.set(
+                        xlabel = feature,
+                        ylabel = 'Count',
+                        xlim = (edges[0], edges[-1]),
+                        title = "Plot of " + feature + " for " + cl
+                    )
+                    if self.ylog:
+                        ax.set_yscale("log")
+                        
+                    ax.grid(True, which='major', linestyle=':', linewidth=.5, color='0.8')
+                    ax.grid(True, which='minor', linestyle=':', linewidth=.3, color='0.9')
+
+                    plt.savefig(self.output()[feature + "_" + cl].path)
+                    plt.close()
+
                     progress.update(
                         task_features,
-                        advance=1,
+                        count=f"{i_f+1}/{len(feature_keys)}",
                     )
-                    progress.update(
-                        task_plots, completed=len(histograms[attribute].dtype.names)
-                    )
-                progress.update(task_process, advance=1)
-            for key, file in self.output().items():
-                file.touch()
+                    progress.advance(task_features)
+                progress.update(
+                    task_class,
+                    count=f"{i_cl+1}/{len(classes)}",
+                )
+                progress.advance(task_class)

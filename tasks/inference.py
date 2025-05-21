@@ -153,7 +153,7 @@ class InferenceTask(
             model,
             all_number_of_samples = chunk_size * len(files),
             config_truths=list(config['truths']),
-            data_type="test",
+            data_type="inference",
             bins_pt=config["bins_pt"],
             bins_eta=config["bins_eta"],
             verbose=self.verbose,
