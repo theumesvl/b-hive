@@ -193,22 +193,6 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             validation_files = [validation_files]
         print(f"#Train files: {len(training_files)}")
         print(f"#Val files: {len(validation_files)}")
-        
-        # Reweighing
-        histogram_training = np.load(
-            self.input()["histogram"].path,
-            allow_pickle=True,
-        )
-        if self.loss_weighting:
-            class_weights = histogram_training.sum() / histogram_training.sum(axis=(1, 2))
-            class_weights = torch.from_numpy(class_weights).to(self.device)
-            print("Using loss weighting.")
-            print("Class weights: ", class_weights)
-            print(f"Number of class members: {histogram_training.sum(axis=(1, 2))}")
-            print(f"Total number of members: {np.sum(histogram_training)}")
-        else:
-            print("Using weighted sampling")
-            class_weights = None
 
         # Model Defintion
         if issubclass(type(model := BTaggingModels(self.model_name, config)), torch.nn.Module):
@@ -226,6 +210,51 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             )
         else:
             optimizer = model.optimizer
+
+        # Reweighing
+        weights_file = self.input()["file_list"].path.strip("processed_files.txt") + "weights.lz4"
+        if config.get("processor") == "LZ4FP16Processing":
+            dtype = np.float16
+        else:
+            dtype = np.float32
+
+        with lz4.frame.open(weights_file, mode='r', block_size=lz4.frame.BLOCKSIZE_MAX4MB) as fp:
+            output_data = fp.read()
+            weights = np.frombuffer(output_data, dtype=dtype).astype('float32')
+        chunk_size = int(len(weights) / len(files))
+        
+        if self.loss_weighting:
+            histogram_training = np.load(
+                self.input()["histogram"].path,
+                allow_pickle=True,
+            )
+            class_abundance = np.zeros(len(model.classes))
+            for index, (name, flavours) in enumerate(model.classes.items()):
+                idxs = []
+                for flav in flavours:
+                    idxs.append(list(config['truths']).index(flav))
+                class_abundance[index] = np.sum(histogram_training[idxs])
+            class_weights = class_abundance.sum() / class_abundance
+            class_weights /= class_weights.sum()
+            print("Using loss weighting.")
+            print(f"Class weights: {[round(n, 4) for n in class_weights]}")
+            print(f"Number of class members: {list(class_abundance.astype(int))}")
+            print(f"Total number of members: {class_abundance.sum():,}")
+            class_weights = torch.tensor(class_weights.astype(dtype), device = self.device)
+            expected_train_number_of_batches = (chunk_size // self.batch_size)*len(training_files) + ((chunk_size % self.batch_size)*len(training_files)) // self.batch_size
+            expected_val_number_of_batches   = (chunk_size // self.batch_size)*len(validation_files) + ((chunk_size % self.batch_size)*len(validation_files)) // self.batch_size
+            rw = ''
+        else:
+            print("Using weighted sampling")
+            class_weights = None
+            expected_train_number_of_batches = int(weights[: n_train * chunk_size].sum() // self.batch_size)
+            if n_train == len(files):
+                expected_val_number_of_batches = expected_train_number_of_batches
+            else:
+                expected_val_number_of_batches   = int(weights[n_train * chunk_size:].sum() // self.batch_size)
+            rw = ' (after reweighing)'
+        print(f'Estimated number of jets/events in training{rw}:   {expected_train_number_of_batches*self.batch_size:>12,}')
+        print(f'Estimated number of jets/events in validation{rw}: {expected_val_number_of_batches*self.batch_size:>12,}')
         
         # Pick attack
         print(rf"Applying {self.attack} attack (attack_magnitude={self.attack_magnitude}, n_iterations={self.attack_iterations}, attack_uncertainty={self.attack_uncertainty}).")
@@ -259,24 +288,6 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         
         print("Dataset construction")
         datasetClass = DatasetLoader(config["dataset"])
-
-        weights_file = self.input()["file_list"].path.strip("processed_files.txt") + "weights.lz4"
-        if config.get("processor") == "LZ4FP16Processing":
-            dtype = np.float16
-        else:
-            dtype = np.float32
-
-        with lz4.frame.open(weights_file, mode='r', block_size=lz4.frame.BLOCKSIZE_MAX4MB) as fp:
-            output_data = fp.read()
-            weights = np.frombuffer(output_data, dtype=dtype).astype('float32')
-        chunk_size = int(len(weights) / len(files))
-        expected_train_number_of_batches = int(weights[: n_train * chunk_size].sum() // self.batch_size)
-        print(f'Estimated number of jets/events in training (after reweighing):   {expected_train_number_of_batches*self.batch_size:,}')
-        if n_train == len(files):
-            expected_val_number_of_batches = expected_train_number_of_batches
-        else:
-            expected_val_number_of_batches   = int(weights[n_train * chunk_size:].sum() // self.batch_size)
-        print(f'Estimated number of jets/events in validation (after reweighing): {expected_val_number_of_batches*self.batch_size:,}')
         
         # Define the training and validation datasets
         training_data = datasetClass(

@@ -110,6 +110,7 @@ time law run ROCCurveTask \
         --test-dataset-version $test_version \
         --test-filelist $FILELIST  \
         --model-name DeepJetTransformer \
+        --TrainingTask-loss-weighting True \
         --epochs 1 \
         --batch-size 4 \
         --optimizer AdamW \
