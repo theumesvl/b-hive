@@ -56,7 +56,8 @@ class Classifier_base(nn.Module):
         cpf_dim = self.model_feature_length('cpf_candidates', 'cpf_custom_features')
         npf_dim = self.model_feature_length('npf_candidates', 'npf_custom_features')
         vtx_dim = self.model_feature_length('vtx_features', 'vtx_custom_features')
-        return global_dim, cpf_dim, npf_dim, vtx_dim
+        lt_dim  = self.model_feature_length('lt_candidates', 'lt_custom_features')
+        return global_dim, cpf_dim, npf_dim, vtx_dim, lt_dim
         
     def calculate_feature_length(self, base_key, custom_key=None):
         base_length = 0
@@ -72,12 +73,14 @@ class Classifier_base(nn.Module):
         len_cpf_fts_full = self.calculate_feature_length('cpf_candidates', 'cpf_custom_features')
         len_npf_fts_full = self.calculate_feature_length('npf_candidates', 'npf_custom_features')
         len_vtx_fts_full = self.calculate_feature_length('vtx_features', 'vtx_custom_features')
+        len_lt_fts_full  = self.calculate_feature_length('lt_candidates', 'lt_custom_features')
         
         self.input_dims = [
             (1,                               len_glob_fts_full),
             (self.config['n_cpf_candidates'], len_cpf_fts_full),
             (self.config['n_npf_candidates'], len_npf_fts_full),
-            (self.config['n_vtx_candidates'], len_vtx_fts_full)
+            (self.config['n_vtx_candidates'], len_vtx_fts_full),
+            (self.config['n_lt_candidates'],  len_lt_fts_full),
         ]
         
         feature_edges = []
@@ -484,19 +487,21 @@ class Classifier_base(nn.Module):
             Tuple[torch.Tensor]: Processed tensors for glob, cpf, npf, and vtx.
         """
         # Split the input tensor
-        glob, cpf, npf, vtx = x.split(self.feature_lengths.tolist(), dim=1)
+        glob, cpf, npf, vtx, lt = x.split(self.feature_lengths.tolist(), dim=1)
 
         # Reshape tensors as per input dimensions
         glob = glob.reshape(glob.shape[0], -1)
-        cpf = cpf.reshape(cpf.shape[0], self.input_dims[1][0], -1)
-        npf = npf.reshape(npf.shape[0], self.input_dims[2][0], -1)
-        vtx = vtx.reshape(vtx.shape[0], self.input_dims[3][0], -1)
+        cpf = cpf.reshape(cpf.shape[0], *self.input_dims[1])
+        npf = npf.reshape(npf.shape[0], *self.input_dims[2])
+        vtx = vtx.reshape(vtx.shape[0], *self.input_dims[3])
+        lt  = lt.reshape(lt.shape[0],   *self.input_dims[4])
 
         # Subselect features
         glob = self._subselect_features(glob, "global_features", "global_custom_features")
         cpf = self._subselect_features(cpf, "cpf_candidates", "cpf_custom_features")
         npf = self._subselect_features(npf, "npf_candidates", "npf_custom_features")
         vtx = self._subselect_features(vtx, "vtx_features", "vtx_custom_features")
+        lt  = self._subselect_features(vtx, "lt_features", "lt_custom_features")
 
         if attack is not None:
             (
@@ -504,6 +509,7 @@ class Classifier_base(nn.Module):
                 cpf,
                 npf,
                 vtx,
+                lt,
                 truth,
             ) = attack(
                 [
@@ -513,6 +519,7 @@ class Classifier_base(nn.Module):
                         cpf,
                         npf,
                         vtx,
+                        lt,
                         ]
                     ],
                 truth.type(torch.LongTensor).to(device),
@@ -520,7 +527,7 @@ class Classifier_base(nn.Module):
                 loss_fn,
             ) 
         
-        return (glob.detach(), cpf.detach(), npf.detach(), vtx.detach()), truth
+        return (glob.detach(), cpf.detach(), npf.detach(), vtx.detach(), lt.detach()), truth
         
 
     def calculate_roc_list(

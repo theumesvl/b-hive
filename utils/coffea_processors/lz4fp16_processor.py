@@ -121,6 +121,23 @@ class LZ4FP16Processing(DataPreprocessing_BaseClass):
             feature_length=self.n_vtx,
         )
 
+        lt_arr = structured_custom_array_from_tree(
+            events=events[data_slice],
+            keys=self.lt,
+            custom_keys=[
+                key
+                for dictionary in self.lt_custom
+                for key, value in dictionary.items()
+            ],
+            custom_formulas=[
+                value
+                for dictionary in self.lt_custom
+                for key, value in dictionary.items()
+            ],
+            precision=np.float16,
+            feature_length=self.n_lt,
+        )
+
         # create an array with the process value
         process = np.ones(len(global_arr)) * flag
 
@@ -155,14 +172,22 @@ class LZ4FP16Processing(DataPreprocessing_BaseClass):
             )
         else:
             vtx_mask = np.ones(len(global_arr))
+        if lt_arr.dtype.names:
+            lt_mask = reduce(
+                np.logical_and,
+                [~np.any(np.isnan(lt_arr[key]), axis=1) for key in lt_arr.dtype.names],
+            )
+        else:
+            lt_mask = np.ones(len(global_arr))
 
-        nan_mask = reduce(np.logical_and, [glob_mask, cpf_mask, npf_mask, vtx_mask])
+        nan_mask = reduce(np.logical_and, [glob_mask, cpf_mask, npf_mask, vtx_mask, lt_mask])
 
         return (
             global_arr[nan_mask],
             cpf_arr[nan_mask],
             npf_arr[nan_mask],
             vtx_arr[nan_mask],
+            lt_arr[nan_mask],
             truth_arr[nan_mask],
             process[nan_mask],
         )
@@ -181,7 +206,7 @@ class LZ4FP16Processing(DataPreprocessing_BaseClass):
         return arr.view((arr.dtype[0], len(arr.dtype.names))).astype(np.float16)
         
     def saveOutput(
-        self, output_location, global_arr, cpf_arr, npf_arr, vtx_arr, truth, process
+        self, output_location, global_arr, cpf_arr, npf_arr, vtx_arr, lt_arr, truth, process
     ):
         n_jet = truth.shape[0]
         
@@ -190,10 +215,11 @@ class LZ4FP16Processing(DataPreprocessing_BaseClass):
         cpf_part = np.swapaxes(self.process_array(cpf_arr, n_jet, n_Cand=self.n_cpf), 1, 2).reshape(n_jet, -1)
         npf_part = np.swapaxes(self.process_array(npf_arr, n_jet, n_Cand=self.n_npf), 1, 2).reshape(n_jet, -1)
         vtx_part = np.swapaxes(self.process_array(vtx_arr, n_jet, n_Cand=self.n_vtx), 1, 2).reshape(n_jet, -1)
+        lt_part  = np.swapaxes(self.process_array(lt_arr,  n_jet, n_Cand=self.n_lt),  1, 2).reshape(n_jet, -1)
         process_part = process.astype(np.float16).reshape(n_jet, -1)
         truth_part = truth.view((truth.dtype[0], len(truth.dtype.names))).astype(np.float16).reshape(n_jet, -1)
         
-        arr = np.concatenate([global_part, cpf_part, npf_part, vtx_part, process_part, truth_part], axis=1)
+        arr = np.concatenate([global_part, cpf_part, npf_part, vtx_part, lt_part, process_part, truth_part], axis=1)
         
         arr = arr[~np.any(np.isnan(arr), axis=-1)]
         arr = arr[~np.any(np.isinf(arr), axis=-1)]

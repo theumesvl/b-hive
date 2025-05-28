@@ -11,6 +11,7 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
     n_cpf = 128
     n_npf = 128
     n_vtx = 10
+    n_lt  = 5
 
     def __init__(
         self,
@@ -27,11 +28,14 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
         npf_custom_features: dict = None,
         vtx_features: List[str] = None,
         vtx_custom_features: dict = None,
+        lt_candidates: List[str] = None,
+        lt_custom_features: dict = None,
         truths: List[str] = None,
         processes: List[str] = None,
         n_cpf_candidates=128,
         n_npf_candidates=0,
         n_vtx_features=10,
+        n_lt_candidates=0,
         pt_key: str = None,
         eta_key: str = None,
     ):
@@ -48,12 +52,15 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
         self.npf_custom = npf_custom_features
         self.vtx = vtx_features
         self.vtx_custom = vtx_custom_features
+        self.lt = lt_candidates
+        self.lt_custom = lt_custom_features
         self.global_features = global_features
         self.global_custom_features = global_custom_features
         self.truths = truths
         self.n_cpf = n_cpf_candidates
         self.n_npf = n_npf_candidates
         self.n_vtx = n_vtx_features
+        self.n_lt  = n_lt_candidates
         self.pt_key = pt_key
         self.eta_key = eta_key
         if self.processes is None:
@@ -91,6 +98,12 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
         )
         feature_names.extend(self.vtx)
         feature_names.extend(self.vtx_custom)
+        feature_edges.append(
+            feature_edges[-1] + (len(self.lt) + len(self.lt_custom)) * self.n_lt
+        )
+        feature_names.extend(self.lt)
+        feature_names.extend(self.lt_custom)
+        
         feature_names.append("truths")
         feature_names.extend(self.truths)
         feature_names.append("process")
@@ -132,6 +145,7 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
             cpf_arr,
             npf_arr,
             vtx_arr,
+            lt_arr,
             truth,
             process,
         ) = self.callColumnAccumulator(
@@ -151,7 +165,7 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
         output_location_list.append(output_location)
 
         self.saveOutput(
-            output_location, global_arr, cpf_arr, npf_arr, vtx_arr, truth, process
+            output_location, global_arr, cpf_arr, npf_arr, vtx_arr, lt_arr, truth, process
         )
         
         ret = {}

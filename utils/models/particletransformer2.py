@@ -684,7 +684,7 @@ class ParticleTransformer2(Classifier_base):
         self.num_head = num_head
         self.dtype = torch.float16
 
-        _, cpf_dim, npf_dim, vtx_dim = self.all_model_features_length()
+        _, cpf_dim, npf_dim, vtx_dim, _ = self.all_model_features_length()
         
         cpf_dim = cpf_dim - 4
         npf_dim = npf_dim - 4

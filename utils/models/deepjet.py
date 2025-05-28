@@ -58,7 +58,7 @@ class DeepJet(Classifier_base):
 
         self.config = config
 
-        global_dim, cpf_dim, npf_dim, vtx_dim = self.all_model_features_length()  
+        global_dim, cpf_dim, npf_dim, vtx_dim, _ = self.all_model_features_length()  
         cpf_conv = [cpf_dim] + cpf_conv
         npf_conv = [npf_dim] + npf_conv
         vtx_conv = [vtx_dim] + vtx_conv
@@ -69,7 +69,6 @@ class DeepJet(Classifier_base):
         self.DenseClassifier = DenseClassifier(dense_clas_dim_full)
 
         self.global_bn = torch.nn.BatchNorm1d(global_dim, eps=0.001, momentum=0.6)
-        print(self.global_bn)
         self.cpf_lstm = torch.nn.LSTM(
             input_size=cpf_conv[-1], hidden_size=lstm_dim[0], num_layers=n_layers_lstm, batch_first=True
         )
@@ -174,45 +173,6 @@ class DeepJetHLT(Classifier_base):
         "npf_candidates": [],
         "vtx_features": ["jet_sv_ntrack"],
     }
-    
-    def get_inpt(self, x, truth=None, loss_fn=None, attack=None, device='cpu'):
-
-        glob, cpf, npf, vtx = x.split(self.feature_lengths.tolist(), dim=1)
-        
-        glob = glob.reshape(glob.shape[0], -1)
-        cpf = cpf.reshape(cpf.shape[0], self.input_dims[1][0], -1)
-        npf = npf.reshape(npf.shape[0], self.input_dims[2][0], 0)
-        vtx = vtx.reshape(vtx.shape[0], self.input_dims[3][0], -1)
-
-        # Subselect features
-        glob = self._subselect_features(glob, "global_features", "global_custom_features")
-        cpf = self._subselect_features(cpf, "cpf_candidates", "cpf_custom_features")
-        npf = self._subselect_features(npf, "npf_candidates", "npf_custom_features")
-        vtx = self._subselect_features(vtx, "vtx_features", "vtx_custom_features")
-
-        if attack is not None:
-            (
-                glob,
-                cpf,
-                npf,
-                vtx,
-                truth,
-            ) = attack(
-                [
-                    feature.float().to(device)
-                    for feature in [
-                        glob,
-                        cpf,
-                        npf,
-                        vtx,
-                        ]
-                    ],
-                truth.type(torch.LongTensor).to(device),
-                self,
-                loss_fn,
-            ) 
-        
-        return (glob.detach(), cpf.detach(), npf.detach(), vtx.detach()), truth
 
     def __init__(self,
                  config,
@@ -228,7 +188,7 @@ class DeepJetHLT(Classifier_base):
 
         self.config = config
 
-        _, cpf_dim, _, vtx_dim = self.all_model_features_length()  
+        _, cpf_dim, _, vtx_dim, _ = self.all_model_features_length()  
         
         cpf_conv = [cpf_dim] + cpf_conv
         vtx_conv = [vtx_dim] + vtx_conv

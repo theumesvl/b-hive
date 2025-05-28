@@ -17,7 +17,7 @@ class LZ4_PairedTaggerProcessor(LZ4Processing):
     """
     
     def callColumnAccumulator(self, output, events, flag, **kwargs):
-        global_arr, cpf_arr, npf_arr, vtx_arr, truth_arr, process = super().callColumnAccumulator(output, events, flag, **kwargs)
+        global_arr, cpf_arr, npf_arr, vtx_arr, lt_arr, truth_arr, process = super().callColumnAccumulator(output, events, flag, **kwargs)
         
         #print('----- Inside PairedTaggerProcessor -----')
         #print('global_arr.shape:', global_arr.shape)
@@ -40,6 +40,7 @@ class LZ4_PairedTaggerProcessor(LZ4Processing):
             cpf_arr[selection_mask],
             npf_arr[selection_mask],
             vtx_arr[selection_mask],
+            lt_arr[selection_mask],
             truth_arr[selection_mask],
             process[selection_mask],
         )

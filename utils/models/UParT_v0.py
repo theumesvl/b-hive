@@ -643,7 +643,7 @@ class UParT_v0(Classifier_base):
         self.gen_pt_WithNu_index = config.get('global_features',[]).index('gen_pt_WithNu')
         self.gen_pt = config.get('global_features',[]).index('gen_pt')
 
-        _, cpf_dim, npf_dim, vtx_dim = self.all_model_features_length() 
+        _, cpf_dim, npf_dim, vtx_dim, _ = self.all_model_features_length() 
 
         # 4 features for creating attenion mask
         cpf_dim = cpf_dim - 4
