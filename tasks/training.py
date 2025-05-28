@@ -1,6 +1,7 @@
 import law
 import luigi
 import os
+import json
 import torch
 import lz4.frame
 from torch.utils.data import DataLoader
@@ -212,16 +213,17 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             optimizer = model.optimizer
 
         # Reweighing
-        weights_file = self.input()["file_list"].path.strip("processed_files.txt") + "weights.lz4"
+        weights_file = self.input()["file_list"].path.strip("processed_files.txt") + "weights.json"
         if config.get("processor") == "LZ4FP16Processing":
             dtype = np.float16
         else:
             dtype = np.float32
 
-        with lz4.frame.open(weights_file, mode='r', block_size=lz4.frame.BLOCKSIZE_MAX4MB) as fp:
-            output_data = fp.read()
-            weights = np.frombuffer(output_data, dtype=dtype).astype('float32')
-        chunk_size = int(len(weights) / len(files))
+        with open(weights_file, "r") as f:
+            metadata = json.load(f)
+        
+        chunk_size   = metadata["chunk_size"]
+        sum_weights  = np.array(metadata["sum_weight"])
         
         if self.loss_weighting:
             histogram_training = np.load(
@@ -247,11 +249,11 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         else:
             print("Using weighted sampling")
             class_weights = None
-            expected_train_number_of_batches = int(weights[: n_train * chunk_size].sum() // self.batch_size)
+            expected_train_number_of_batches = int(sum_weights[: n_train].sum() // self.batch_size)
             if n_train == len(files):
                 expected_val_number_of_batches = expected_train_number_of_batches
             else:
-                expected_val_number_of_batches   = int(weights[n_train * chunk_size:].sum() // self.batch_size)
+                expected_val_number_of_batches   = int(sum_weights[n_train:].sum() // self.batch_size)
             rw = ' (after reweighing)'
         print(f'Estimated number of jets/events in training{rw}:   {expected_train_number_of_batches*self.batch_size:>12,}')
         print(f'Estimated number of jets/events in validation{rw}: {expected_val_number_of_batches*self.batch_size:>12,}')
@@ -294,7 +296,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             training_files,
             model=model,
             config_truths=list(config['truths']),
-            all_number_of_samples=int(len(weights)*self.train_val_split),
+            #all_number_of_samples=int(len(weights)*self.train_val_split),
             data_type="training",
             weighted_sampling=not (self.loss_weighting),
             device=self.device,
@@ -311,7 +313,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             validation_files,
             model=model,
             config_truths=list(config['truths']),
-            all_number_of_samples=len(weights) - int(len(weights)*self.train_val_split),
+            #all_number_of_samples=len(weights) - int(len(weights)*self.train_val_split),
             data_type="validation",
             weighted_sampling=not (self.loss_weighting),
             device=self.device,

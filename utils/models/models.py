@@ -4,6 +4,7 @@ class ModelName:
     MoDJet = "MoDJet"
     ParticleTransformer = "ParticleTransformer"
     ParticleTransformer2 = "ParticleTransformer2"
+    ParticleTransformer2_LT = "ParticleTransformer2_LT"
     ParticleTransformerHLT = "ParticleTransformerHLT"
     GlobalParticleTransformerHLT = "GlobalParticleTransformerHLT"
     UParT_v0 = "UParT_v0"
@@ -24,7 +25,6 @@ class ModelName:
     #PAIReDTagger = "PAIReDTagger"
     LZ4PAIReDTagger = "LZ4PAIReDTagger"
     ParticleNet = "ParticleNet"
-    ParticleTransformer = "ParticleTransformer"
     DeepJet_PAIReD = "DeepJet_PAIReD"
     #ParT_cls = "ParT_cls"
 
@@ -48,6 +48,9 @@ def BTaggingModels(model: str = "", *args, **kwargs):
             return ParticleTransformer(*args, **kwargs)
         case ModelName.ParticleTransformer2:
             from utils.models.particletransformer2 import ParticleTransformer2
+            return ParticleTransformer2(*args, **kwargs)
+        case ModelName.ParticleTransformer2_LT:
+            from utils.models.particletransformer2_LT import ParticleTransformer2
             return ParticleTransformer2(*args, **kwargs)
         case ModelName.ParticleTransformerHLT:
             from utils.models.particletransformer import ParticleTransformerHLT

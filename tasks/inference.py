@@ -19,6 +19,7 @@ from utils.loss.LossFunctionLoader import LossFunctionLoader
 import os
 import lz4.frame
 import law
+import json
 
 def import_libraries():
     from torch.utils.data import DataLoader
@@ -136,22 +137,23 @@ class InferenceTask(
 
         print("Initialize datasets")
         datasetClass = DatasetLoader(config["dataset"])
-        weights_file = (
-            self.input()["test_dataset"]["file_list"].path.strip("processed_files.txt") + "weights.lz4"
-        )
+        weights_file = self.input()["test_dataset"]["file_list"].path.strip("processed_files.txt") + "weights.json"
+        
         if config.get("processor", "PFCandidateAndVertexProcessing") == "LZ4FP16Processing":
             dtype = np.float16
         else:
             dtype = np.float32
-        with lz4.frame.open(weights_file, mode='r') as fp:
-            output_data = fp.read()
-            weights = np.frombuffer(output_data, dtype=dtype).astype('float32')
-        chunk_size = int(len(weights) / len(files))
+            
+        with open(weights_file, "r") as f:
+            metadata = json.load(f)
+        
+        chunk_size   = metadata["chunk_size"]
+        
         expected_test_number_of_batches = int((chunk_size * len(files)) // self.batch_size)
         test_data = datasetClass(
             files,
             model,
-            all_number_of_samples = chunk_size * len(files),
+            #all_number_of_samples = chunk_size * len(files),
             config_truths=list(config['truths']),
             data_type="inference",
             bins_pt=config["bins_pt"],

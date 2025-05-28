@@ -4,6 +4,7 @@ from math import inf
 import lz4.frame
 from concurrent.futures import ThreadPoolExecutor
 import threading
+import json
 
 import numpy as np
 import numpy.lib.recfunctions as rfn
@@ -92,11 +93,12 @@ def merge_datasets(
             dim = np.load(files[0][:-4]+'.npy', allow_pickle=True).shape[-1]
             chunk = np.empty((chunk_size, dim), dtype=dtype)
 
-            weight_filename = os.path.join(path, "weights.lz4")
+            weight_filename = os.path.join(path, "weights.json")
 
             reference_histogram = histograms[reference_key] #reference_key is an index in the context of LZ4 datasets
             reference_histogram = reference_histogram / np.max(reference_histogram)
             weights_list = []
+            weights_list_sum = []
             for c in range(histograms.shape[0]):
                 other_histogram = histograms[c]
                 max_hist = np.max(other_histogram)
@@ -118,7 +120,7 @@ def merge_datasets(
             i = 0
             
             def process_file(file):
-                nonlocal chunk, n_chunk, any_file_created, weights_list, file_list, i
+                nonlocal chunk, n_chunk, any_file_created, weights_list, weights_list_sum, file_list, i
 
                 data = np.load(file[:-4]+'.npy', allow_pickle=True).astype(dtype)
                 os.remove(file[:-4]+'.npy')
@@ -146,10 +148,6 @@ def merge_datasets(
                         n_chunk = n_samples - index_range
                         
                 if should_process:
-                    # Lock only when updating shared resources
-                    with chunk_lock:
-                        filename = os.path.join(path, f"{label}_{len(file_list)}.lz4")
-                        file_list.append(filename)
             
                     s1 = ~np.isnan(chunk_to_process).any(axis = 1)
                     s2 = ~np.isinf(chunk_to_process).any(axis = 1)
@@ -166,6 +164,12 @@ def merge_datasets(
         
                     arr = np.concatenate((size, chunk_to_process.astype(dtype).flatten()))
                     arr = arr.tobytes()
+
+                    # Lock only when updating shared resources
+                    with chunk_lock:
+                        filename = os.path.join(path, f"{label}_{len(file_list)}.lz4")
+                        file_list.append(filename)
+                        weights_list_sum.append(float(w.sum()))
 
                     print(filename)
                     with lz4.frame.open(filename, mode='wb') as fp:
@@ -185,9 +189,17 @@ def merge_datasets(
             with ThreadPoolExecutor(max_workers=workers) as executor:  # Adjust workers as needed
                 list(executor.map(process_file, files))
                 progress.update(task, completed=len(files))
-                
+    
             if not any_file_created:
                 raise ValueError("Expected at least one file to be created, but none were. This is probably to the small amount of data and/or large chunk size.")
+                
+            metadata = {
+                "chunk_size": chunk_size,
+                "sum_weight": weights_list_sum
+            }
+            
+            with open(os.path.join(weight_filename), "w") as out:
+                json.dump(metadata, out, indent=2)
         else:
             fields = np.load(files[0], allow_pickle=True, mmap_mode="r").files
             for i, file in enumerate(files):

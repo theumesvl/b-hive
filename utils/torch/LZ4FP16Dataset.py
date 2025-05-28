@@ -13,7 +13,7 @@ class LZ4FP16Dataset(IterableDataset):
         files,
         model,
         config_truths,
-        all_number_of_samples,
+        #all_number_of_samples,
         data_type="training",
         weighted_sampling=False,
         device="cpu",
@@ -37,7 +37,7 @@ class LZ4FP16Dataset(IterableDataset):
             self.data_type = "test"
 
         self.batch_size = batch_size
-        self.all_number_of_samples = all_number_of_samples
+        #self.all_number_of_samples = all_number_of_samples
         self.weighted_sampling = weighted_sampling
         self.process_weights = process_weights
         self.device = device
@@ -46,8 +46,8 @@ class LZ4FP16Dataset(IterableDataset):
         self.num_truth = len(model.classes.keys())
         self.num_ele = len(config_truths)
 
-    def __len__(self):
-        return int(self.all_number_of_samples)
+    #def __len__(self):
+    #    return int(self.all_number_of_samples)
 
     def __getitem__(self, index):
         raise NotImplementedError
