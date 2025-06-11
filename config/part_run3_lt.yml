@@ -31,8 +31,19 @@ bins_eta:
 - 2.0
 - 2.51
 
+processes:
+- "TT"
+- "sTB"
+- "Zprime"
+- "WtoTau"
+- "WtoLNu-2Jets"
+- "VBFH"
+- "QCD"
+- "NMSSM"
+- "DY"
+
 TT:
- pt_min: 20
+ pt_min: 30
  pt_max: 250 
  eta_min: -2.5
  eta_max: 2.5
