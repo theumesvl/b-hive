@@ -82,7 +82,7 @@ class Classifier_base(nn.Module):
             (self.config['n_vtx_candidates'], len_vtx_fts_full),
             (self.config['n_lt_candidates'],  len_lt_fts_full),
         ]
-        
+
         feature_edges = []
         v = 0
         for dim in self.input_dims:
@@ -92,7 +92,6 @@ class Classifier_base(nn.Module):
         self.feature_edges = torch.Tensor(feature_edges).int()    
         feature_lengths = self.feature_edges[1:] - self.feature_edges[:-1]
         self.feature_lengths = torch.cat((self.feature_edges[:1], feature_lengths))
-        
 
     def train_model(
         self,
@@ -501,7 +500,7 @@ class Classifier_base(nn.Module):
         cpf = self._subselect_features(cpf, "cpf_candidates", "cpf_custom_features")
         npf = self._subselect_features(npf, "npf_candidates", "npf_custom_features")
         vtx = self._subselect_features(vtx, "vtx_features", "vtx_custom_features")
-        lt  = self._subselect_features(vtx, "lt_features", "lt_custom_features")
+        lt  = self._subselect_features(lt,  "lt_features", "lt_custom_features")
 
         if attack is not None:
             (

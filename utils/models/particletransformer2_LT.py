@@ -373,7 +373,7 @@ class InputProcess(nn.Module):
 
         self.vtx_conv1 = InputConv(vtx_dim, embed_dim)
         self.vtx_conv3 = InputConv(embed_dim * 1, embed_dim)
-
+        
         self.lt_conv1 = InputConv(lt_dim, embed_dim)
         self.lt_conv3 = InputConv(embed_dim * 1, embed_dim)
 
@@ -388,8 +388,8 @@ class InputProcess(nn.Module):
         vtx = self.vtx_conv1(vtx, vtx, skip=False)
         vtx = self.vtx_conv3(vtx, vtx, skip=True)
 
-        lt = self.vtx_conv1(lt, lt, skip=False)
-        lt = self.vtx_conv3(lt, lt, skip=True)
+        lt = self.lt_conv1(lt, lt, skip=False)
+        lt = self.lt_conv3(lt, lt, skip=True)
 
         out = torch.cat((cpf, npf, vtx, lt), dim=1)
 
@@ -670,7 +670,6 @@ class ParticleTransformer2(Classifier_base):
                            "LT_lostInnerHits", "LT_numberOfStripHits"]
     }
         
-
     def __init__(
         self,
         config,
@@ -700,6 +699,7 @@ class ParticleTransformer2(Classifier_base):
         lt_dim  = lt_dim - 4
 
         self.InputProcess = InputProcess(cpf_dim, npf_dim, vtx_dim, lt_dim, embed_dim)
+
         self.Linear = nn.Linear(embed_dim, num_classes)
 
         self.pair_embed = PairEmbed(4, [3*num_head,]*2 + [num_head], for_onnx=for_inference)
@@ -744,11 +744,6 @@ class ParticleTransformer2(Classifier_base):
         attn_mask = self.pair_embed(v)
         attn_mask = attn_mask + pad.unsqueeze(dim=1)
 
-        bad = ~torch.isfinite(attn_mask)
-        if bad.any():
-            idx = torch.nonzero(bad)[:5]                  
-            print(f"Enc0: {bad.sum()} non-finite values; idx {idx.tolist()[:5]}")
-
         enc = self.Encoder(enc, attn_mask.reshape(-1, v.size(-1), v.size(-1)), padding_mask)
 
         cls_tokens = self.cls_token.expand(enc.size(0), 1, -1)
@@ -763,3 +758,90 @@ class ParticleTransformer2(Classifier_base):
             output = torch.softmax(output, dim=1)
 
         return output
+
+
+class ParticleTransformer2_tau(ParticleTransformer2):
+    
+    classes = {
+        "b": ["isB", "isBB", "isGBB", "isLeptonicB", "isLeptonicB_C"],
+        "c": ["isC", "isCC", "isGCC"],
+        "uds": ["isU", "isD", "isS"],
+        "g": ["isG"],
+        "tau_p": ["isTaup1h0p_", "isTaup1h1p_", "isTaup1h2p_", "isTaup3h0p_", "isTaup3h1p_"],
+        "tau_m": ["isTaum1h0p_", "isTaum1h1p_", "isTaum1h2p_", "isTaum3h0p_", "isTaum3h1p_"]
+    }
+
+    def calculate_roc_list(
+        self,
+        predictions,
+        truth,
+    ):
+        if np.abs(np.mean(np.sum(predictions, axis=-1)) - 1) > 1e-3:
+            predictions = softmax(predictions, axis=-1)
+
+        b_index   = list(self.classes).index('b')
+        c_index   = list(self.classes).index('c')
+        uds_index = list(self.classes).index('uds')
+        g_index   = list(self.classes).index('g')
+        taup_index = list(self.classes).index('tau_p')
+        taum_index = list(self.classes).index('tau_m')
+        
+        b_jets   = (truth == b_index)
+        tau_jets = (truth == taup_index) | (truth == taum_index)
+        c_jets   = (truth == c_index)
+        uds_jets = (truth == uds_index)
+        g_jets   = (truth == g_index)
+        l_jets   = uds_jets | g_jets
+        summed_jets = b_jets + c_jets + l_jets + tau_jets
+
+        b_pred = predictions[:, b_index]
+        taup_pred = predictions[:, taup_index]
+        taum_pred = predictions[:, taum_index]
+        tau_pred = taup_pred + taum_pred
+        c_pred = predictions[:, c_index]
+        uds_pred = predictions[:, uds_index]
+        g_pred = predictions[:, g_index]
+        l_pred = predictions[:, [uds_index, g_index]].sum(axis=1)
+
+        bvsl = np.where((b_pred + l_pred) > 0, (b_pred) / (b_pred + l_pred), -1)
+        bvsc = np.where((b_pred + c_pred) > 0, (b_pred) / (b_pred + c_pred), -1)
+        cvsb = np.where((b_pred + c_pred) > 0, (c_pred) / (b_pred + c_pred), -1)
+        cvsl = np.where((l_pred + c_pred) > 0, (c_pred) / (l_pred + c_pred), -1)
+        bvsall = np.where(
+            (b_pred + l_pred + c_pred + taup_pred + taum_pred) > 0, (b_pred) / (b_pred + l_pred + c_pred + taup_pred + taum_pred), -1
+        )
+        uds_vs_g = np.where((uds_pred + g_pred) > 0, (uds_pred) / (uds_pred + g_pred), -1)
+        tauvsl = np.where((tau_pred + l_pred) > 0, (tau_pred) / (tau_pred + l_pred), -1)
+
+        tau_veto = (truth != taup_index) & (truth != taum_index) & (summed_jets != 0)
+        b_veto = (truth != b_index) & tau_veto & (summed_jets != 0)
+        c_veto = (truth != c_index) & tau_veto & (summed_jets != 0)
+        bc_veto_tau = (truth != c_index) & (truth != b_index) & (summed_jets != 0)
+        bc_veto = b_veto & c_veto
+        l_veto = (truth != uds_index) & (truth != g_index) & tau_veto & (summed_jets != 0)
+        no_veto = np.ones(b_veto.shape, dtype=bool)
+
+        labels = ["bvsl", "bvsc", "cvsb", "cvsl", "bvsall", "uds_vs_g", "tauvsl"]
+        discs = [bvsl, bvsc, cvsb, cvsl, bvsall, uds_vs_g, tauvsl]
+        vetos = [c_veto, l_veto, l_veto, b_veto, no_veto, bc_veto, bc_veto_tau]
+        truths = [b_jets, b_jets, c_jets, c_jets, b_jets, uds_jets, tau_jets]
+        xlabels = [
+            "b-identification",
+            "b-identification",
+            "c-identification",
+            "c-identification",
+            "b-identification",
+            "uds-identification",
+            "tau-identification",
+        ]
+        ylabels = [
+            "light mis-id.", 
+            "c mis-id", 
+            "b mis-id.", 
+            "light mis-id.", 
+            "mis-id.", 
+            "gluons mis-id.", 
+            "light mis-id."
+        ]
+
+        return discs, truths, vetos, labels, xlabels, ylabels

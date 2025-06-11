@@ -31,6 +31,12 @@ bins_eta:
 - 2.0
 - 2.51
 
+TT:
+ pt_min: 20
+ pt_max: 250 
+ eta_min: -2.5
+ eta_max: 2.5
+
 treename:
   "deepntuplizer/tree"
 
