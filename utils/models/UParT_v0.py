@@ -632,9 +632,8 @@ class UParT_v0(Classifier_base):
         build_4v=True,
         **kwargs
     ):
-        super().__init__(**kwargs)
-
-        self.config = config
+        super().__init__(config, **kwargs)
+        
         self.for_inference = for_inference
         self.build_4v = build_4v
         self.num_enc_layers = num_enc

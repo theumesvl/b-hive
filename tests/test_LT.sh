@@ -17,13 +17,13 @@ fi
 
 # Ensure data directory exists
 mkdir -p "$TESTDIRECTORY/data/LT"
-DEST_FILE="$TESTDIRECTORY/data/LT/ntuple_merged_0.root"
+DEST_FILE="$TESTDIRECTORY/data/LT/ntuple_TTHHto4B_0.root"
 
 # Copy or download the file
 if [ ! -f $DEST_FILE ]; then
     echo "Copying test file to: $DEST_FILE"
     # Define the source file path
-    SOURCE_FILE=/eos/cms/store/group/phys_btag/ParticleEdge/Edge_dataset/MC/Mon_114117_balance/ntuple_TTHHto4B/output/ntuple_TTHHto4B_8.root
+    SOURCE_FILE=/eos/cms/store/group/phys_btag/b-hive/test_files/data/LT/ntuple_TTHHto4B_0.root
     if [ -f "$SOURCE_FILE" ]; then
         echo "File exists locally."
         cp $SOURCE_FILE $DEST_FILE
@@ -74,6 +74,28 @@ time law run ROCCurveTask \
         --attack-magnitude 0.1 \
         --use-torch-compile True \
         --torch-compile-mode default
+
+printf "\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
+printf "+         Test 2:  part_run3_lt_fp16 + ParticleTransformer2_LT_tau + torch.compile(reduce-overhead) + loss-reweighting                   +\n"
+printf "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+
+time law run ROCCurveTask \
+        --debug True \
+        --DatasetConstructorTask-chunk-size 1000 \
+        --config part_run3_lt_fp16 \
+        --training-version $test_version \
+        --dataset-version $test_version \
+        --filelist $FILELIST \
+        --test-dataset-version $test_version \
+        --test-filelist $FILELIST  \
+        --model-name ParticleTransformer2_LT_tau \
+        --TrainingTask-loss-weighting True \
+        --epochs 3 \
+        --batch-size 4 \
+        --optimizer AdamW \
+        --attack-magnitude 0.1 \
+        --use-torch-compile True \
+        --torch-compile-mode reduce-overhead
         
 printf "\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
 printf "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"

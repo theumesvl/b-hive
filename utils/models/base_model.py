@@ -30,6 +30,22 @@ class CustomTimeElapsedColumn(TimeElapsedColumn):
         
 class Classifier_base(nn.Module):
 
+    integer_features = {
+            "global_features": [],
+            "cpf_candidates": [],
+            "npf_candidates": [],
+            "vtx_features": [],
+            "lt_candidates": [],
+    }
+
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+        self.create_integers_defaults()
+        self.create_feature_shapes()
+        for key in ['n_cpf_candidates', 'n_npf_candidates', 'n_vtx_candidates', 'n_lt_candidates']:
+            setattr(self, key, getattr(self, key, config[key]))     
+
     def _create_feature_indices(self, feature_list, feature_key):
         """Helper function to create feature indices from model attributes or config."""
         source = getattr(self, feature_key, self.config.get(feature_key, []))
@@ -279,8 +295,8 @@ class Classifier_base(nn.Module):
     def step(self, inpt, truth, loss_fn, attack=None, device="cpu", mixed_precision=True):
         
         with torch.autocast(device, enabled=mixed_precision):
-            pred = self.forward(inpt)
-            loss = loss_fn(pred, truth).mean()
+            pred = self.forward(inpt)         
+            loss = loss_fn(pred.float(), truth).mean()
         return pred, loss
     
     def update(
@@ -451,13 +467,15 @@ class Classifier_base(nn.Module):
         return losses, float(accuracy), elapsed_column.elapsed_time
 
 
-    def _subselect_features(self, tensor, name_fts, custom_name_fts):
+    def _subselect_features(self, tensor, name_fts, custom_name_fts, length):
         """
         Subselects features from a tensor based on the model's feature list or the config.
 
         Args:
             tensor (torch.Tensor): The input tensor to subselect from.
             name_fts (str): The name of features group to subselect.
+            custom_name_fts (str): The name of custom features group to add.
+            length (int): The length of the list of candidates to restrict to.
 
         Returns:
             torch.Tensor: The subselection of the input tensor.
@@ -468,7 +486,7 @@ class Classifier_base(nn.Module):
             indices = [all_fts.index(f) for f in model_features]
         else:
             indices = list(range(tensor.size(-1)))  # Default to all features if not specified
-        return tensor.index_select(dim=-1, index=torch.tensor(indices, device=tensor.device, dtype=torch.long))
+        return tensor.index_select(dim=-1, index=torch.tensor(indices, device=tensor.device, dtype=torch.long))[:, :length]
 
     
     def get_inpt(self, x, truth=None, loss_fn=None, attack=None, device='cpu'):
@@ -496,12 +514,12 @@ class Classifier_base(nn.Module):
         lt  = lt.reshape(lt.shape[0],   *self.input_dims[4])
 
         # Subselect features
-        glob = self._subselect_features(glob, "global_features", "global_custom_features")
-        cpf = self._subselect_features(cpf, "cpf_candidates", "cpf_custom_features")
-        npf = self._subselect_features(npf, "npf_candidates", "npf_custom_features")
-        vtx = self._subselect_features(vtx, "vtx_features", "vtx_custom_features")
-        lt  = self._subselect_features(lt,  "lt_features", "lt_custom_features")
-
+        glob = self._subselect_features(glob, "global_features", "global_custom_features", None)
+        cpf = self._subselect_features(cpf, "cpf_candidates", "cpf_custom_features", self.n_cpf_candidates)
+        npf = self._subselect_features(npf, "npf_candidates", "npf_custom_features", self.n_npf_candidates)
+        vtx = self._subselect_features(vtx, "vtx_features", "vtx_custom_features", self.n_vtx_candidates)
+        lt  = self._subselect_features(lt,  "lt_features", "lt_custom_features", self.n_lt_candidates)
+        
         if attack is not None:
             (
                 glob,

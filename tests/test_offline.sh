@@ -23,7 +23,7 @@ DEST_FILE="$TESTDIRECTORY/data/offline/ntuple_merged_0.root"
 if [ ! -f $DEST_FILE ]; then
     echo "Copying test file to: $DEST_FILE"
     # Define the source file path
-    SOURCE_FILE=/eos/cms/store/group/phys_btag/ParticleTransformer/merged/ntuple_merged_0.root
+    SOURCE_FILE=/eos/cms/store/group/phys_btag/b-hive/test_files/data/offline/ntuple_merged_0.root
     if [ -f "$SOURCE_FILE" ]; then
         echo "File exists locally."
         cp $SOURCE_FILE $DEST_FILE
@@ -82,6 +82,8 @@ time law run ROCCurveTask \
         --debug True \
         --DatasetConstructorTask-chunk-size 1000 \
         --config part_fp16_run3 \
+        --training-precision float16 \
+        --testing-precision float16 \
         --training-version $test_version \
         --dataset-version $test_version \
         --filelist $FILELIST \
@@ -115,6 +117,7 @@ time law run ROCCurveTask \
         --batch-size 4 \
         --optimizer AdamW \
         --attack pgd \
+        --verbose True \
         --attack-magnitude 0.1
 
 printf "\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"

@@ -42,6 +42,18 @@ processes:
 - "NMSSM"
 - "DY"
 
+#REMEMBER THEY'RE INVERSED
+process_weights:
+  TT: 1
+  sTB: 1
+  Zprime: 1
+  WtoTau: 1
+  WtoLNu-2Jets: 1
+  VBFH: 1
+  QCD: 1
+  NMSSM: 1
+  DY: 1
+
 TT:
  pt_min: 30
  pt_max: 250 

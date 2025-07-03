@@ -125,7 +125,7 @@ reference_flavour:
   "isB"
 
 processor:
-  "LZ4FP16Processing"
-
-dataset:
-  "LZ4FP16Dataset"
+  "LZ4Processing"
+  
+data_precision:
+  "float16"

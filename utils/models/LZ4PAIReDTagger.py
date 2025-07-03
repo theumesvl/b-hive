@@ -724,9 +724,7 @@ class LZ4PAIReDTagger(Classifier_base):
         class_weights=None,
         **kwargs
     ):
-        super().__init__(**kwargs)
-
-        self.config = config
+        super().__init__(config, **kwargs)
         
         self.for_inference = for_inference
         self.build_4v = build_4v

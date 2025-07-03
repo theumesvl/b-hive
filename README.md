@@ -26,7 +26,7 @@ git clone ssh://git@gitlab.cern.ch:7999/cms-btv/b-hive.git
 cd b-hive
 ```
 
-Next, install the neede python environment via [mamba](https://mamba.readthedocs.io/en/latest/user_guide/mamba.html) (or conda):
+Next, install the needed python environment via [mamba](https://mamba.readthedocs.io/en/latest/user_guide/mamba.html) (or conda):
 
 ```bash
 mamba env create -n b_hive -f env.yml
@@ -40,7 +40,7 @@ have sufficient space!
 
 ```bash
 # example local_setup.sh
-export DATA_PATH=/net/scratch/myUserName/b-hive/
+export DATA_PATH=/net/scratch/myUserName/b-hive/output/
 ```
 
 Now source the setup-script to set up the environment everything:
@@ -48,7 +48,7 @@ Now source the setup-script to set up the environment everything:
 ```bash
 # initialize needed environments 
 source setup.sh
-# init law tasks
+# init law tasks (needed to be executed only once)
 law index
 ```
 ## Tutorial
@@ -63,17 +63,20 @@ law index --verbose
 """
 output
 """
-indexing tasks in 7 module(s)
+indexing tasks in 8 module(s)
+loading module 'tasks.base', done
 loading module 'tasks.dataset', done
 loading module 'tasks.plotting', done
 loading module 'tasks.training', done
 loading module 'tasks.inference', done
 loading module 'tasks.working_point', done
+loading module 'tasks.input_plotter', done
 loading module 'workflows.DeepFlavour', done
 
-module 'workflows.DeepFlavour', 3 task(s):
+module 'workflows.DeepFlavour', 4 task(s):
     - DeepJetRunHLT
     - DeepJetRun
+    - DeepJetRunHLTPhase2
     - ParticleNetRunHLT
 
 module 'tasks.dataset', 1 task(s):
@@ -91,24 +94,32 @@ module 'tasks.plotting', 1 task(s):
 module 'tasks.working_point', 1 task(s):
     - WorkingPointTask
 
-written 8 task(s) to index file '/home/NiclasEich/b_tagging/b-hive/.law/index'
+module 'tasks.input_plotter', 2 task(s):
+    - InputHistogrammerTask
+    - HistogramPlotterTask
+
+written 11 task(s) to index file '/eos/user/p/pkashko/b_hive_fix/b-hive/.law/index'
 
 ```
 
 This shows us all taks that are at hand:
 
 - DatasetConstructorTask
-  - exports a dataset of root file to the training format
+    - exports a dataset of root file to the training format
 - TrainingTask 
-  -  trains a model
+    -  trains a model
 - InferenceTask
     - runs the prediction on a dataset
 - ROCCurveTask 
     - computes and plots the ROC on a prediction
 - WorkingPointTask
-   - calculates working points on a prediction
+    - calculates working points on a prediction
+- InputHistogrammerTask
+    - creates histograms of input features
+- HistogramPlotterTask
+    - plot histograms of input features
 - ~~DeepJetRun~~ 
-   - full pipeline
+    - full pipeline
 
 all these need to be in files that are specified in the `law.cfg`. Task that are in the `tasks` directory, are basic tasks, whereas the `workflows` directory specifies full training pipelines,
 with the necessary parameters set.
@@ -252,17 +263,17 @@ All branches that are specified in the config are exported. The different models
 
 ### Running a Training
 
-Test files are saved in `/eos/cms/store/group/phys_btag/b-hive/test_files`. You can download these and then run a training.
+Test files are saved in `/eos/cms/store/group/phys_btag/b-hive/test_files/data`. You can download these and then run a training.
 The HLT test-files should be used with the `hlt_run3` config, ~~whereas the offline ones with the `offline_run3` config~~TODO!.
 
 Download the files via:
 ```bash
-scp -r user@lxplus.cern.ch:/eos/cms/store/group/phys_btag/b-hive/test_files/hlt_test local_path/hlt_test
+scp -r user@lxplus.cern.ch:/eos/cms/store/group/phys_btag/b-hive/test_files/data/hlt local_path/hlt_test
 ```
 
 these should give you these three files:
 ```
-QCD_120_170.root  TT_inclusive_01.root  TT_inclusive_02.root
+out_11.root  out_1.root  out_2000_test.root
 ```
 
 now we need to create two filelist with a `training_files.txt` and `test_files.txt`.
@@ -272,10 +283,10 @@ This can be either done manually, or with a simple bash command:
 # find all files - works also in nested dirs
 find ~+ -type f -name "*.root" > all_files.txt
 
-# put the first 1 files into training
-head -n 1 all_files.txt > training_files.txt
-# put last 2  into test
-tail -n 2 all_files.txt > test_files.txt
+# put the first 2 files into training
+head -n 2 all_files.txt > training_files.txt
+# put last 1 into test
+tail -n 1 all_files.txt > test_files.txt
 
 # Let's check what we have created here
 echo "Training files:"
@@ -314,7 +325,7 @@ Next we can run a training via:
 law run TrainingTask --training-version tutorial_training_01 --dataset-version tutorial_01 --config hlt_run3 --model-name DeepJetHLT --epochs 1
 ```
 
-I hope you are as excited as me to see the ROC curve improve!
+I hope you are as excited as me to see the accuracy improve!
 
 Let's plot the final results:
 
@@ -332,38 +343,4 @@ Now have a looko at the results and start training your tagger on a real dataset
 
 This describes how to add new models and configs TODO!
 
-Classifiers are defined in the `utils/models/abstract_base_models.py` and need to implement the following methods:
-
-```python
-class Classifier(ABC):
-    @abstractmethod
-    def train_model(
-        self,
-        training_data,
-        validation_data,
-        directory,
-        device=None,
-        nepochs=0,
-        learning_rate=0.001,
-        resume_epochs=0,
-        **kwargs,
-    ):
-        pass
-
-    @abstractmethod
-    def validate_model(self, dataloader, loss_fn, device="cpu", verbose=True):
-        pass
-
-    @abstractmethod
-    def predict_model(self, dataloader, device=None):
-        pass
-
-    @abstractmethod
-    def calculate_roc_list(
-        self,
-        predictions,
-        truth,
-    ):
-        pass
-```
-
+Classifiers are based on the parent class `utils/models/base_model.py`. Each model `utils/models` is a child class with its own specification regarding `forward()` function. Other methods could be directly overwritten in the child class, but don't change `base_model.py`.

@@ -1,4 +1,6 @@
 # __init__.py
-from .LZ4Dataset import LZ4Dataset
-from .LZ4FP16Dataset import LZ4FP16Dataset
 from .l1tDataset import L1TDataset
+from .LZ4Dataset import LZ4Dataset
+from .PAIReDDataset import PAIReDDataset
+from .LZ4PAIReDDataset import LZ4PAIReDDataset
+from .NumpyDataset import NumpyDataset

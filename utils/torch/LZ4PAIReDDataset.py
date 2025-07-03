@@ -10,43 +10,32 @@ import lz4.frame
 
 
 class LZ4PAIReDDataset(IterableDataset):
-    #@profile
     def __init__(
         self,
         files,
         model,
-        config_truths,
+        config,
         data_type="training",
         weighted_sampling=False,
         device="cpu",
-        histogram_training=None,
-        max_length=1,
-        bins_pt=None,
-        bins_eta=None,
         verbose=0,
-        config=None,
         batch_size=512,
-        all_number_of_samples=None,
+        **kwargs
     ):
         self.verbose = verbose
         self.files = files
-        if (bins_pt is None) or (bins_eta is None):
-            raise ValueError("You need to specify bins!")
-        self.bins_pt = bins_pt
-        self.bins_eta = bins_eta
         self.Nedges = [0]
         self.data_type = data_type
-        if data_type == "validation":
+        
+        if data_type == "validation" or data_type == "inference":
             self.data_type = "test"
-        if histogram_training is not None:
-            self.all_number_of_samples = histogram_training.sum()
-        else:
-            with lz4.frame.open(self.files[0], mode='r') as fp:
-                output_data = fp.read()
-                s = np.frombuffer(output_data, dtype='float32')
-                self.all_number_of_samples = s[0] * len(self.files)
                 
         self.weighted_sampling = weighted_sampling
+        self.process_weights = (
+            [config["process_weights"][p] for p in config["processes"]]
+            if "process_weights" in config
+            else None
+        )
         self.batch_size = batch_size
         self.num_ele = 0
 
@@ -75,8 +64,8 @@ class LZ4PAIReDDataset(IterableDataset):
         self.feature_lengths = torch.cat((feature_edges[:1], feature_lengths))
 
     #@profile
-    def __len__(self):
-        return int(self.all_number_of_samples)
+    #def __len__(self):
+    #    return int(self.all_number_of_samples)
     
     #@profile
     def __getitem__(self, index):
@@ -323,17 +312,3 @@ class LZ4PAIReDDataset(IterableDataset):
                     ]
                     
         return None
-
-
-    def get_all_weights(self):
-        weights = np.empty((self.Nedges[-1]))
-        N = 0
-        for file in track(
-            self.files, "Reading in the weights for the " + self.data_type + " data"
-        ):
-            with open(file, "rb") as np_file:
-                data = np.load(np_file)
-            n_elements = int(data.shape[0])
-            weights[N : N + n_elements] = data[:, -3]
-            N += n_elements
-        return weights

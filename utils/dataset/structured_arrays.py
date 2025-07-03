@@ -41,7 +41,7 @@ def structured_array_from_tree(
                     ak.fill_none(
                         ak.pad_none(events[key], feature_length)[:, :feature_length], 0
                     ),
-                    np.float32,
+                    precision,
                 )
             )
     return arr
@@ -82,8 +82,6 @@ def structured_custom_array_from_tree(
         ]
     )
     for key, dtype_name in zip(keys, dtype.fields):
-        if 'label_bb' in key:
-            counter += 1
         if feature_length == 1:
             arr[key] = np.array(events[key], dtype=[(dtype_name, precision)])
         else:
@@ -94,7 +92,7 @@ def structured_custom_array_from_tree(
                     ),
                     np.float32,
                 )
-            )
+            ).astype(precision)
 
     dtype = np.dtype(
         [
@@ -123,7 +121,7 @@ def structured_custom_array_from_tree(
                         ),
                         np.float32,
                     )
-                )
+                ).astype(precision)
     return arr
 
 # Helper function: interpret a condition (raw scalar or dict like {">": 0})

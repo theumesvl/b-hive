@@ -54,9 +54,7 @@ class DeepJet(Classifier_base):
                  **kwargs
         ):
         
-        super().__init__(**kwargs)
-
-        self.config = config
+        super().__init__(config, **kwargs)
 
         global_dim, cpf_dim, npf_dim, vtx_dim, _ = self.all_model_features_length()  
         cpf_conv = [cpf_dim] + cpf_conv
@@ -184,9 +182,7 @@ class DeepJetHLT(Classifier_base):
                  **kwargs
         ):
         
-        super().__init__(**kwargs)
-
-        self.config = config
+        super().__init__(config, **kwargs)
 
         _, cpf_dim, _, vtx_dim, _ = self.all_model_features_length()  
         

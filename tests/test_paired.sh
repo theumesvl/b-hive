@@ -25,7 +25,7 @@ DEST_FILE="$TESTDIRECTORY/data/PAIReD_LL_CC_BB/paired_test.root"
 if [ ! -f $TESTDIRECTORY/data/PAIReD_LL_CC_BB/paired_test.root ]; then
     echo "Copying test file to: $DEST_FILE"
     # Define the source file path
-    SOURCE_FILE=/eos/cms/store/group/phys_btag/b-hive/test_files/PAIReD_LL_CC_BB/paired_test.root
+    SOURCE_FILE=/eos/cms/store/group/phys_btag/b-hive/test_files/data/paired/paired_test.root
     if [ -f "$SOURCE_FILE" ]; then
         echo "File exists locally."
         cp $SOURCE_FILE $DEST_FILE

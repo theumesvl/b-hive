@@ -12,39 +12,41 @@ class LZ4Dataset(IterableDataset):
         self,
         files,
         model,
-        config_truths,
-        #all_number_of_samples,
+        config,
         data_type="training",
         weighted_sampling=False,
         device="cpu",
-        max_length=1,
         process_weights=None,
-        bins_pt=None,
-        bins_eta=None,
         verbose=0,
         batch_size = 512,
+        out_precision='float32',
         **kwargs
     ):
         self.verbose = verbose
         self.files = files
-        if (bins_pt is None) or (bins_eta is None):
-            raise ValueError("You need to specify bins!")
-        self.bins_pt = bins_pt
-        self.bins_eta = bins_eta
         self.Nedges = [0]
         self.data_type = data_type
+        self.batch_size = batch_size
+        self.data_precision = config["data_precision"]
+        self.out_precision  = out_precision
+        
         if data_type == "validation" or data_type == "inference":
             self.data_type = "test"
-       
-        self.batch_size = batch_size
+        
+        print(f'Precision of {data_type} dataset is set to {self.out_precision}')
         #self.all_number_of_samples = all_number_of_samples
         self.weighted_sampling = weighted_sampling
         self.process_weights = process_weights
         self.device = device
         self.model = model
-        self.config_truths = config_truths
+        self.config_truths = list(config['truths'])
         self.num_truth = len(model.classes.keys())
-        self.num_ele = len(config_truths)
+        self.num_ele = len(self.config_truths)
+        self.process_weights = (
+            [config["process_weights"][p] for p in config["processes"]]
+            if "process_weights" in config
+            else None
+        )
 
     #def __len__(self):
     #    return int(self.all_number_of_samples)
@@ -70,11 +72,20 @@ class LZ4Dataset(IterableDataset):
             #Add LZ4 loading
             with lz4.frame.open(file, mode='r') as data:
                 output_data = data.read()
-            s = np.frombuffer(output_data, dtype='float32').copy()
+            s = np.frombuffer(output_data, dtype=self.data_precision).copy()
             s = s[2:].reshape(-1, int(s[1]), order="C")
 
+            if self.out_precision=='float16':
+                max_f16 = np.finfo(np.float16).max  # ≈ 65504.0
+                s = np.clip(s, -max_f16, max_f16)
+                s = s.astype(np.float16)
+
+            process = s[:, -(self.num_ele+2)]
             if self.weighted_sampling:
                 random_number = np.random.rand(s.shape[0])
+                if not (self.process_weights is None):
+                    for proc, proc_w in enumerate(self.process_weights):
+                        random_number[process == proc] *= proc_w
                 mask = random_number < s[:, -1]
                 s = s[mask]
 

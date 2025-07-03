@@ -14,6 +14,10 @@ class DatasetDependency(object):
         significant=False,
         default="",
     )
+    training_precision = luigi.Parameter(
+        default="float32",
+        description="The precision of data for training. Default: float32",
+    )
 
     def store_parts(self):
         parts = super().store_parts()
@@ -31,6 +35,10 @@ class TestDatasetDependency(object):
         description="txt file with input root files",
         significant=False,
         default="",
+    )
+    testing_precision = luigi.Parameter(
+        default="float32",
+        description="The precision of data for testing. Default: float32",
     )
 
     def store_parts(self):

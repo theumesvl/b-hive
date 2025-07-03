@@ -432,9 +432,8 @@ class ParticleNetTagger(Classifier_base):
         for_inference=False,
         **kwargs,
     ):
-        super().__init__(**kwargs)
-
-        self.config = config
+        super().__init__(config, **kwargs)
+        
         self.for_inference = for_inference
 
         _, cpf_dim, npf_dim, vtx_dim, _ = self.all_model_features_length()  
@@ -538,9 +537,8 @@ class ParticleNetTaggerHLT(Classifier_base):
         for_inference=False,
         **kwargs,
     ):
-        super().__init__(**kwargs)
-
-        self.config = config
+        super().__init__(config, **kwargs)
+        
         self.for_inference = for_inference
 
         _, cpf_dim, _, vtx_dim, _ = self.all_model_features_length()  
@@ -662,8 +660,7 @@ class UParticleNetTaggerHLT(ParticleNetTaggerHLT):
         **kwargs,
     ):
         super().__init__(config, **kwargs)
-
-        self.config = config
+        
         self.for_inference = for_inference
         self.loss_lambda = loss_lambda
 

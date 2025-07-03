@@ -5,8 +5,8 @@ class ModelName:
     ParticleTransformer = "ParticleTransformer"
     ParticleTransformer2 = "ParticleTransformer2"
     ParticleTransformer2_LT = "ParticleTransformer2_LT"
+    ParticleTransformer2_LT_tau_all = "ParticleTransformer2_LT_tau_all"
     ParticleTransformer2_LT_tau = "ParticleTransformer2_LT_tau"
-    ParticleTransformer2_LT_Big = "ParticleTransformer2_LT_Big"
     ParticleTransformer2_LT_tau_Big = "ParticleTransformer2_LT_tau_Big"
     ParticleTransformer2_LT_tau_Huge = "ParticleTransformer2_LT_tau_Huge"
     ParticleTransformerHLT = "ParticleTransformerHLT"
@@ -56,12 +56,12 @@ def BTaggingModels(model: str = "", *args, **kwargs):
         case ModelName.ParticleTransformer2_LT:
             from utils.models.particletransformer2_LT import ParticleTransformer2
             return ParticleTransformer2(*args, **kwargs)
-        case ModelName.ParticleTransformer2_LT_Big:
-            from utils.models.particletransformer2_LT import ParticleTransformer2
-            return ParticleTransformer2(*args, num_enc=6, embed_dim=192, **kwargs)
         case ModelName.ParticleTransformer2_LT_tau:
             from utils.models.particletransformer2_LT import ParticleTransformer2_tau
             return ParticleTransformer2_tau(*args, **kwargs)
+        case ModelName.ParticleTransformer2_LT_tau_all:
+            from utils.models.particletransformer2_LT import ParticleTransformer2_tau_all
+            return ParticleTransformer2_tau_all(*args, **kwargs)
         case ModelName.ParticleTransformer2_LT_tau_Big:
             from utils.models.particletransformer2_LT import ParticleTransformer2_tau
             return ParticleTransformer2_tau(*args, num_enc=6, embed_dim=192, **kwargs)

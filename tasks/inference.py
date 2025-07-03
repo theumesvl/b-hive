@@ -15,6 +15,7 @@ from utils.models.models import BTaggingModels
 from utils.plotting.termplot import terminal_roc
 from utils.torch.DatasetLoader import DatasetLoader
 from utils.loss.LossFunctionLoader import LossFunctionLoader
+from utils.weighting.batches import expected_batches
 
 import os
 import lz4.frame
@@ -66,7 +67,6 @@ class InferenceTask(
             "truth": self.local_target("truth.npy"),
             "kinematics": self.local_target("kinematics.npy"),
             "inference_time": self.local_target("inference_time.npy"),
-            # "inference_writeout": self.local_target("inference_feature_writeout.parquet"),
         }
 
     def run(self):
@@ -88,6 +88,7 @@ class InferenceTask(
             best_model = torch.load(
                 self.input()["training"]["best_model"].path,
                 map_location=torch.device(self.device),
+                weights_only=False,
             )
             model.load_state_dict(best_model["model_state_dict"])
         else:
@@ -147,24 +148,23 @@ class InferenceTask(
         with open(weights_file, "r") as f:
             metadata = json.load(f)
         
-        chunk_size   = metadata["chunk_size"]
+        chunk_sizes = np.array(metadata["chunk_size"])
+        if len(chunk_sizes) == 1:
+            chunk_sizes = np.ones(len(files))*chunk_sizes
         
-        expected_test_number_of_batches = int((chunk_size * len(files)) // self.batch_size)
+        expected_test_number_of_batches = expected_batches(chunk_sizes, self.batch_size)
         test_data = datasetClass(
-            files,
-            model,
-            #all_number_of_samples = chunk_size * len(files),
-            config_truths=list(config['truths']),
-            data_type="inference",
-            bins_pt=config["bins_pt"],
-            bins_eta=config["bins_eta"],
-            verbose=self.verbose,
+            files=files,
+            model=model,
             config=config,
+            data_type="inference",
+            verbose=self.verbose,
             batch_size=self.batch_size,
+            out_precision=self.testing_precision,
         )
         test_dataloader = DataLoader(
             test_data,
-            batch_size = self.batch_size if config["dataset"] not in {"LZ4FP16Dataset", "LZ4Dataset", "LZ4PAIReDDataset"} else None,
+            batch_size = None, #self.batch_size if config["dataset"] not in {"LZ4FP16Dataset", "LZ4Dataset", "LZ4PAIReDDataset"} else None,
             num_workers=self.n_threads,
             pin_memory=True,  # Pin Memory for faster CPU/GPU memory load
         )

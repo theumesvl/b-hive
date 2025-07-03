@@ -19,7 +19,7 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
         bins_pt: List = None,
         bins_eta: List = None,
         prefix="",
-        precision=np.float32,
+        precision="float32",
         global_features: List[str] = None,
         global_custom_features: dict = None,
         cpf_candidates: List[str] = None,
@@ -43,7 +43,7 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
         self.bins_eta = bins_eta
         self.bins_pt = bins_pt
         self.output_dir = output_directory
-        self.precision = precision
+        self.precision = np.dtype(precision).type
         self.prefix = prefix
         self.processes = processes
         self.cpf = cpf_candidates

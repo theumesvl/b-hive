@@ -45,3 +45,6 @@ processor:
 
 dataset:
   "LZ4Dataset"
+
+data_precision:
+  "float32"

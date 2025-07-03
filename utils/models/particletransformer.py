@@ -646,9 +646,8 @@ class ParticleTransformer(Classifier_base):
         build_4v=True,
         **kwargs
     ):
-        super().__init__(**kwargs)
-
-        self.config = config
+        super().__init__(config, **kwargs)
+        
         self.for_inference = for_inference
         self.build_4v = build_4v
         self.num_enc_layers = num_enc
@@ -747,9 +746,8 @@ class ParticleTransformerHLT(Classifier_base):
         build_4v=True,
         **kwargs
     ):
-        super().__init__(**kwargs)
+        super().__init__(config, **kwargs)
         
-        self.config = config
         self.for_inference = for_inference
         self.build_4v = build_4v
         self.num_enc_layers = num_enc
@@ -899,8 +897,7 @@ class GlobalParticleTransformerHLT(ParticleTransformerHLT):
         **kwargs
     ):
         super().__init__(config, **kwargs)
-
-        self.config = config
+        
         self.for_inference = for_inference
         self.build_4v = build_4v
         self.num_enc_layers = num_enc
