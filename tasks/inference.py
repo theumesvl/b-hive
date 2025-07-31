@@ -138,7 +138,7 @@ class InferenceTask(
 
         print("Initialize datasets")
         datasetClass = DatasetLoader(config["dataset"])
-        weights_file = self.input()["test_dataset"]["file_list"].path.strip("processed_files.txt") + "weights.json"
+        weights_file = self.input()["test_dataset"]["weights"].path
         
         if config.get("processor", "PFCandidateAndVertexProcessing") == "LZ4FP16Processing":
             dtype = np.float16
