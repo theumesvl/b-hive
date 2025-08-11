@@ -69,7 +69,6 @@ class PFCandidateAndVertexProcessing(DataPreprocessing_BaseClass):
             precision=self.precision,
             feature_length=1,
         )
-
         cpf_arr = structured_custom_array_from_tree(
             events=events[data_slice],
             keys=self.cpf,
@@ -118,6 +117,22 @@ class PFCandidateAndVertexProcessing(DataPreprocessing_BaseClass):
             precision=self.precision,
             feature_length=self.n_vtx,
         )
+        lt_arr = structured_custom_array_from_tree(
+            events=events[data_slice],
+            keys=self.lt,
+            custom_keys=[
+                key
+                for dictionary in self.lt_custom
+                for key, value in dictionary.items()
+            ],
+            custom_formulas=[
+                value
+                for dictionary in self.lt_custom
+                for key, value in dictionary.items()
+            ],
+            precision=self.precision,
+            feature_length=self.n_lt,
+        )
 
         # create an array with the process value
         process = np.ones(len(global_arr)) * flag
@@ -150,26 +165,37 @@ class PFCandidateAndVertexProcessing(DataPreprocessing_BaseClass):
             vtx_mask = reduce(
                 np.logical_and,
                 [
-                    ~np.any(np.isnan(vtx_arr[key]), axis=1)
+                    ~np.any(np.isnan(vtx_arr[key]), axis=1) 
                     for key in vtx_arr.dtype.names
                 ],
             )
         else:
             vtx_mask = np.ones(len(global_arr))
+        if lt_arr.dtype.names:
+            lt_mask = reduce(
+                np.logical_and,
+                [
+                    ~np.any(np.isnan(lt_arr[key]), axis=1) 
+                    for key in lt_arr.dtype.names
+                ],
+            )
+        else:
+            lt_mask = np.ones(len(global_arr))
 
-        nan_mask = reduce(np.logical_and, [glob_mask, cpf_mask, npf_mask, vtx_mask])
+        nan_mask = reduce(np.logical_and, [glob_mask, cpf_mask, npf_mask, vtx_mask, lt_mask])
 
         return (
             global_arr[nan_mask],
             cpf_arr[nan_mask],
             npf_arr[nan_mask],
             vtx_arr[nan_mask],
+            lt_arr[nan_mask],
             truth_arr[nan_mask],
             process[nan_mask],
         )
 
     def saveOutput(
-        self, output_location, global_arr, cpf_arr, npf_arr, vtx_arr, truth, process
+        self, output_location, global_arr, cpf_arr, npf_arr, vtx_arr, lt_arr, truth, process
     ):
         np.savez(
             output_location,
@@ -177,6 +203,7 @@ class PFCandidateAndVertexProcessing(DataPreprocessing_BaseClass):
             cpf_arr=cpf_arr,
             npf_arr=npf_arr,
             vtx_arr=vtx_arr,
+            lt_arr=lt_arr,
             truth=truth,
             process=process,
         )

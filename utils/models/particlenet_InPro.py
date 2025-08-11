@@ -432,12 +432,11 @@ class ParticleNetTagger(Classifier_base):
         for_inference=False,
         **kwargs,
     ):
-        super().__init__(**kwargs)
-
-        self.config = config
+        super().__init__(config, **kwargs)
+        
         self.for_inference = for_inference
 
-        _, cpf_dim, npf_dim, vtx_dim = self.all_model_features_length()  
+        _, cpf_dim, npf_dim, vtx_dim, _ = self.all_model_features_length()  
         
         self.InputProcess = InputProcess(cpf_dim, npf_dim, vtx_dim, embed_dim)
         
@@ -525,45 +524,6 @@ class ParticleNetTaggerHLT(Classifier_base):
         "vtx_features": ["jet_sv_ntrack"],
     }
 
-    def get_inpt(self, x, truth=None, loss_fn=None, attack=None, device='cpu'):
-
-        glob, cpf, npf, vtx = x.split(self.feature_lengths.tolist(), dim=1)
-        
-        glob = glob.reshape(glob.shape[0], -1)
-        cpf = cpf.reshape(cpf.shape[0], self.input_dims[1][0], -1)
-        npf = npf.reshape(npf.shape[0], self.input_dims[2][0], 0)
-        vtx = vtx.reshape(vtx.shape[0], self.input_dims[3][0], -1)
-
-        # Subselect features
-        glob = self._subselect_features(glob, "global_features", "global_custom_features")
-        cpf = self._subselect_features(cpf, "cpf_candidates", "cpf_custom_features")
-        npf = self._subselect_features(npf, "npf_candidates", "npf_custom_features")
-        vtx = self._subselect_features(vtx, "vtx_features", "vtx_custom_features")
-
-        if attack is not None:
-            (
-                glob,
-                cpf,
-                npf,
-                vtx,
-                truth,
-            ) = attack(
-                [
-                    feature.float().to(device)
-                    for feature in [
-                        glob,
-                        cpf,
-                        npf,
-                        vtx,
-                        ]
-                    ],
-                truth.type(torch.LongTensor).to(device),
-                self,
-                loss_fn,
-            ) 
-        
-        return (glob.detach(), cpf.detach(), npf.detach(), vtx.detach()), truth
-
     def __init__(
         self,
         config,
@@ -577,12 +537,11 @@ class ParticleNetTaggerHLT(Classifier_base):
         for_inference=False,
         **kwargs,
     ):
-        super().__init__(**kwargs)
-
-        self.config = config
+        super().__init__(config, **kwargs)
+        
         self.for_inference = for_inference
 
-        _, cpf_dim, _, vtx_dim = self.all_model_features_length()  
+        _, cpf_dim, _, vtx_dim, _ = self.all_model_features_length()  
         
         self.InputProcess = InputProcess_HLT(cpf_dim, vtx_dim, embed_dim)
         
@@ -701,8 +660,7 @@ class UParticleNetTaggerHLT(ParticleNetTaggerHLT):
         **kwargs,
     ):
         super().__init__(config, **kwargs)
-
-        self.config = config
+        
         self.for_inference = for_inference
         self.loss_lambda = loss_lambda
 
@@ -713,7 +671,7 @@ class UParticleNetTaggerHLT(ParticleNetTaggerHLT):
         self.taup_index = list(self.classes).index('taup')
         self.taum_index = list(self.classes).index('taum')
 
-        _, cpf_dim, _, vtx_dim = self.all_model_features_length()  
+        _, cpf_dim, _, vtx_dim, _ = self.all_model_features_length()  
         
         self.InputProcess = InputProcess_HLT(cpf_dim, vtx_dim, embed_dim)
         

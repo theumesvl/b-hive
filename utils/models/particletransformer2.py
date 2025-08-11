@@ -660,8 +660,7 @@ class ParticleTransformer2(Classifier_base):
             "cpf_candidates": ["Cpfcan_VTX_ass", "Cpfcan_puppiw", "Cpfcan_chi2", "Cpfcan_quality"],
             "npf_candidates": ["Npfcan_isGamma", "Npfcan_HadFrac", "Npfcan_puppiw"],
             "vtx_features": ["sv_ntracks"]
-    }
-        
+    }        
 
     def __init__(
         self,
@@ -674,17 +673,16 @@ class ParticleTransformer2(Classifier_base):
         build_4v=True,
         swiglu=True,
         **kwargs
-    ):
-        super().__init__(**kwargs)
+    ):        
+        super().__init__(config, **kwargs)
 
-        self.config = config
         self.for_inference = for_inference
         self.build_4v = build_4v
         self.num_enc_layers = num_enc
         self.num_head = num_head
         self.dtype = torch.float16
 
-        _, cpf_dim, npf_dim, vtx_dim = self.all_model_features_length()
+        _, cpf_dim, npf_dim, vtx_dim, _ = self.all_model_features_length()
         
         cpf_dim = cpf_dim - 4
         npf_dim = npf_dim - 4

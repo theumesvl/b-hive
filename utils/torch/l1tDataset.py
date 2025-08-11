@@ -12,23 +12,18 @@ class L1TDataset(IterableDataset):
         self,
         files,
         model,
+        config,
         data_type="training",
         weighted_sampling=True,
         device="cpu",
         histogram_training=None,
         max_length=1,
-        bins_pt=None,
-        bins_eta=None,
         verbose=1,
         batch_size=512,
         **kwargs,
     ):
         self.verbose = verbose
         self.files = files
-        if (bins_pt is None) or (bins_eta is None):
-            raise ValueError("You need to specify bins!")
-        self.bins_pt = bins_pt
-        self.bins_eta = bins_eta
         self.Nedges = [0]
         self.data_type = data_type
         if data_type == "validation":

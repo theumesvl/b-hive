@@ -4,6 +4,11 @@ class ModelName:
     MoDJet = "MoDJet"
     ParticleTransformer = "ParticleTransformer"
     ParticleTransformer2 = "ParticleTransformer2"
+    ParticleTransformer2_LT = "ParticleTransformer2_LT"
+    ParticleTransformer2_LT_tau_all = "ParticleTransformer2_LT_tau_all"
+    ParticleTransformer2_LT_tau = "ParticleTransformer2_LT_tau"
+    ParticleTransformer2_LT_tau_Big = "ParticleTransformer2_LT_tau_Big"
+    ParticleTransformer2_LT_tau_Huge = "ParticleTransformer2_LT_tau_Huge"
     ParticleTransformerHLT = "ParticleTransformerHLT"
     GlobalParticleTransformerHLT = "GlobalParticleTransformerHLT"
     UParT_v0 = "UParT_v0"
@@ -24,7 +29,6 @@ class ModelName:
     #PAIReDTagger = "PAIReDTagger"
     LZ4PAIReDTagger = "LZ4PAIReDTagger"
     ParticleNet = "ParticleNet"
-    ParticleTransformer = "ParticleTransformer"
     DeepJet_PAIReD = "DeepJet_PAIReD"
     #ParT_cls = "ParT_cls"
 
@@ -49,6 +53,21 @@ def BTaggingModels(model: str = "", *args, **kwargs):
         case ModelName.ParticleTransformer2:
             from utils.models.particletransformer2 import ParticleTransformer2
             return ParticleTransformer2(*args, **kwargs)
+        case ModelName.ParticleTransformer2_LT:
+            from utils.models.particletransformer2_LT import ParticleTransformer2
+            return ParticleTransformer2(*args, **kwargs)
+        case ModelName.ParticleTransformer2_LT_tau:
+            from utils.models.particletransformer2_LT import ParticleTransformer2_tau
+            return ParticleTransformer2_tau(*args, **kwargs)
+        case ModelName.ParticleTransformer2_LT_tau_all:
+            from utils.models.particletransformer2_LT import ParticleTransformer2_tau_all
+            return ParticleTransformer2_tau_all(*args, **kwargs)
+        case ModelName.ParticleTransformer2_LT_tau_Big:
+            from utils.models.particletransformer2_LT import ParticleTransformer2_tau
+            return ParticleTransformer2_tau(*args, num_enc=6, embed_dim=192, **kwargs)
+        case ModelName.ParticleTransformer2_LT_tau_Huge:
+            from utils.models.particletransformer2_LT import ParticleTransformer2_tau
+            return ParticleTransformer2_tau(*args, num_enc=12, embed_dim=192, **kwargs)
         case ModelName.ParticleTransformerHLT:
             from utils.models.particletransformer import ParticleTransformerHLT
             return ParticleTransformerHLT(*args, **kwargs)

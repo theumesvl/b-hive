@@ -15,10 +15,12 @@ from utils.models.models import BTaggingModels
 from utils.plotting.termplot import terminal_roc
 from utils.torch.DatasetLoader import DatasetLoader
 from utils.loss.LossFunctionLoader import LossFunctionLoader
+from utils.weighting.batches import expected_batches
 
 import os
 import lz4.frame
 import law
+import json
 
 def import_libraries():
     from torch.utils.data import DataLoader
@@ -65,7 +67,6 @@ class InferenceTask(
             "truth": self.local_target("truth.npy"),
             "kinematics": self.local_target("kinematics.npy"),
             "inference_time": self.local_target("inference_time.npy"),
-            # "inference_writeout": self.local_target("inference_feature_writeout.parquet"),
         }
 
     def run(self):
@@ -87,6 +88,7 @@ class InferenceTask(
             best_model = torch.load(
                 self.input()["training"]["best_model"].path,
                 map_location=torch.device(self.device),
+                weights_only=False,
             )
             model.load_state_dict(best_model["model_state_dict"])
         else:
@@ -136,33 +138,28 @@ class InferenceTask(
 
         print("Initialize datasets")
         datasetClass = DatasetLoader(config["dataset"])
-        weights_file = (
-            self.input()["test_dataset"]["file_list"].path.strip("processed_files.txt") + "weights.lz4"
-        )
-        if config.get("processor", "PFCandidateAndVertexProcessing") == "LZ4FP16Processing":
-            dtype = np.float16
-        else:
-            dtype = np.float32
-        with lz4.frame.open(weights_file, mode='r') as fp:
-            output_data = fp.read()
-            weights = np.frombuffer(output_data, dtype=dtype).astype('float32')
-        chunk_size = int(len(weights) / len(files))
-        expected_test_number_of_batches = int((chunk_size * len(files)) // self.batch_size)
+        weights_file = self.input()["test_dataset"]["weights"].path
+            
+        with open(weights_file, "r") as f:
+            metadata = json.load(f)
+        
+        chunk_sizes = np.array(metadata["chunk_size"])
+        if len(chunk_sizes) == 1:
+            chunk_sizes = np.ones(len(files))*chunk_sizes
+        
+        expected_test_number_of_batches = expected_batches(chunk_sizes, self.batch_size)
         test_data = datasetClass(
-            files,
-            model,
-            all_number_of_samples = chunk_size * len(files),
-            config_truths=list(config['truths']),
-            data_type="inference",
-            bins_pt=config["bins_pt"],
-            bins_eta=config["bins_eta"],
-            verbose=self.verbose,
+            files=files,
+            model=model,
             config=config,
+            data_type="inference",
+            verbose=self.verbose,
             batch_size=self.batch_size,
+            out_precision=self.testing_precision,
         )
         test_dataloader = DataLoader(
             test_data,
-            batch_size = self.batch_size if config["dataset"] not in {"LZ4FP16Dataset", "LZ4Dataset", "LZ4PAIReDDataset"} else None,
+            batch_size = None, #self.batch_size if config["dataset"] not in {"LZ4FP16Dataset", "LZ4Dataset", "LZ4PAIReDDataset"} else None,
             num_workers=self.n_threads,
             pin_memory=True,  # Pin Memory for faster CPU/GPU memory load
         )

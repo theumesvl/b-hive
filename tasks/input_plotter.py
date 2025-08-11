@@ -27,7 +27,7 @@ from utils.config.config_loader import ConfigLoader
 
 def get_feature_keys(config):
     feature_keys = {}
-    for name_fts in ['global_features', 'cpf_candidates', 'npf_candidates', 'vtx_features']:
+    for name_fts in ['global_features', 'cpf_candidates', 'npf_candidates', 'vtx_features', 'lt_candidates']:
         if name_fts in config:
             for feature in config[name_fts]:
                 feature_keys[feature] = name_fts
@@ -60,12 +60,14 @@ def create_feature_shapes(config):
     len_cpf_fts_full = calculate_feature_length(config, 'cpf_candidates', 'cpf_custom_features')
     len_npf_fts_full = calculate_feature_length(config, 'npf_candidates', 'npf_custom_features')
     len_vtx_fts_full = calculate_feature_length(config, 'vtx_features', 'vtx_custom_features')
+    len_lt_fts_full = calculate_feature_length(config, 'lt_candidates', 'lt_custom_features')
     
     input_dims = [
         (1,                          len_glob_fts_full),
         (config['n_cpf_candidates'], len_cpf_fts_full),
         (config['n_npf_candidates'], len_npf_fts_full),
-        (config['n_vtx_candidates'], len_vtx_fts_full)
+        (config['n_vtx_candidates'], len_vtx_fts_full),
+        (config['n_lt_candidates'],  len_lt_fts_full),
     ]
     
     feature_edges = []
@@ -108,18 +110,20 @@ def process_one_file(file_path, config, feature_keys, feature_edges, input_dims,
     s            = s[:,:-(num_ele+2)]
 
     # Split the input tensor
-    glob, cpf, npf, vtx = np.split(s, feature_edges, axis=1)
+    glob, cpf, npf, vtx, lt = np.split(s, feature_edges, axis=1)
 
     # Reshape tensors as per input dimensions
     glob = glob.reshape(glob.shape[0], -1)
     cpf  = safe_reshape(cpf, input_dims[1][0])
     npf  = safe_reshape(npf, input_dims[2][0])
     vtx  = safe_reshape(vtx, input_dims[3][0])
+    lt   = safe_reshape(lt,  input_dims[4][0])
     all_data = {
         'global_features': glob, 
         'cpf_candidates': cpf, 
         'npf_candidates': npf, 
         'vtx_features': vtx,
+        'lt_candidates': lt, 
     }
     
     for i_p, truth in enumerate(config['truths']):

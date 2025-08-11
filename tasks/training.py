@@ -1,6 +1,7 @@
 import law
 import luigi
 import os
+import json
 import torch
 import lz4.frame
 from torch.utils.data import DataLoader
@@ -21,6 +22,7 @@ from utils.config.config_loader import ConfigLoader
 from utils.models.models import BTaggingModels
 from utils.loss.LossFunctionLoader import LossFunctionLoader
 from utils.plotting.roc import plot_roc_list, plot_losses
+from utils.weighting.batches import compute_class_weights, expected_batches
 from torch.nn import Module
 
 def import_libraries():
@@ -128,6 +130,11 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         default=0.85,
         description="The ratio to divide dataset for train/validation. Default: 0.85"
     )
+
+    n_train_files = luigi.IntParameter(
+        default=-1,
+        description="The number of train files to use. Default: -1 (all)"
+    )
     
     def requires(self):
         return DatasetConstructorTask.req(self)
@@ -180,41 +187,27 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         # Split into train/val sets
         assert (self.train_val_split <= 1) and (self.train_val_split >= 0), "train_val_split should be between 0 and 1!"
         n_train = max((1, int(len(files) * self.train_val_split)))  # has at least one training file
+        n_val   = len(files) - n_train
+        validation_files = files[-n_val:]
+        if self.n_train_files != -1:
+            n_train = self.n_train_files
+            print(f'Restricted to {self.n_train_files} from {n_train} training files manualy!')
         training_files = files[:n_train]
-        validation_files = files[n_train:]
-        if len(validation_files) == 0:
+        
+        if n_train == len(files):
             print("\nWARNING!")
             print("No validation files found. Please check your dataset. Most likely you only have one file!")
             print("Using the training file for validation\n")
-            validation_files = training_files
         if not (isinstance(training_files, list)):
             training_files = [training_files]
         if not (isinstance(validation_files, list)):
             validation_files = [validation_files]
         print(f"#Train files: {len(training_files)}")
         print(f"#Val files: {len(validation_files)}")
-        
-        # Reweighing
-        histogram_training = np.load(
-            self.input()["histogram"].path,
-            allow_pickle=True,
-        )
-        if self.loss_weighting:
-            class_weights = histogram_training.sum() / histogram_training.sum(axis=(1, 2))
-            class_weights = torch.from_numpy(class_weights).to(self.device)
-            print("Using loss weighting.")
-            print("Class weights: ", class_weights)
-            print(f"Number of class members: {histogram_training.sum(axis=(1, 2))}")
-            print(f"Total number of members: {np.sum(histogram_training)}")
-        else:
-            print("Using weighted sampling")
-            class_weights = None
 
         # Model Defintion
         if issubclass(type(model := BTaggingModels(self.model_name, config)), torch.nn.Module):
             model = model.to(self.device)
-            model.create_integers_defaults()
-            model.create_feature_shapes()
             model.mixed_precision = self.mixed_precision
             model.use_torch_compile = self.use_torch_compile
             optimizer = OptimizerLoader(
@@ -226,6 +219,39 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             )
         else:
             optimizer = model.optimizer
+
+        # Reweighing
+        with open(self.input()["weights"].path, "r") as f:
+            metadata = json.load(f)
+        chunk_sizes  = np.array(metadata["chunk_size"])
+        sum_weights  = np.array(metadata["sum_weight"])
+        
+        # back-compatibility
+        if len(chunk_sizes) == 1:
+            chunk_sizes = np.ones(len(training_files))*chunk_sizes
+        print(f"chunk_sizes: {chunk_sizes}")
+        
+        if self.loss_weighting:
+            print("Using loss weighting")
+            class_weights = compute_class_weights(
+                classes = model.classes,
+                truths  = config["truths"],
+                histogram_path = self.input()["histogram"].path,
+                dtype = np.float32,#self.training_precision,
+                device = self.device,
+            )
+            expected_train_number_of_batches = expected_batches(chunk_sizes[:n_train],   self.batch_size)
+            expected_val_number_of_batches   = expected_batches(chunk_sizes[-n_val:], self.batch_size)
+            rw = ""
+    
+        else:
+            print("Using weighted sampling")
+            class_weights = None
+            expected_train_number_of_batches = expected_batches(sum_weights[:n_train], self.batch_size)
+            expected_val_number_of_batches   = expected_batches(sum_weights[-n_val:],  self.batch_size)
+            rw = ' (after reweighing)'
+        print(f'Estimated number of jets/events in training{rw}:   {expected_train_number_of_batches*self.batch_size:,}')
+        print(f'Estimated number of jets/events in validation{rw}: {expected_val_number_of_batches*self.batch_size:,}')
         
         # Pick attack
         print(rf"Applying {self.attack} attack (attack_magnitude={self.attack_magnitude}, n_iterations={self.attack_iterations}, attack_uncertainty={self.attack_uncertainty}).")
@@ -259,56 +285,32 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         
         print("Dataset construction")
         datasetClass = DatasetLoader(config["dataset"])
-
-        weights_file = self.input()["file_list"].path.strip("processed_files.txt") + "weights.lz4"
-        if config.get("processor") == "LZ4FP16Processing":
-            dtype = np.float16
-        else:
-            dtype = np.float32
-
-        with lz4.frame.open(weights_file, mode='r', block_size=lz4.frame.BLOCKSIZE_MAX4MB) as fp:
-            output_data = fp.read()
-            weights = np.frombuffer(output_data, dtype=dtype).astype('float32')
-        chunk_size = int(len(weights) / len(files))
-        expected_train_number_of_batches = int(weights[: n_train * chunk_size].sum() // self.batch_size)
-        print(f'Estimated number of jets/events in training (after reweighing):   {expected_train_number_of_batches*self.batch_size:,}')
-        if n_train == len(files):
-            expected_val_number_of_batches = expected_train_number_of_batches
-        else:
-            expected_val_number_of_batches   = int(weights[n_train * chunk_size:].sum() // self.batch_size)
-        print(f'Estimated number of jets/events in validation (after reweighing): {expected_val_number_of_batches*self.batch_size:,}')
         
         # Define the training and validation datasets
         training_data = datasetClass(
-            training_files,
+            files=training_files,
             model=model,
-            config_truths=list(config['truths']),
-            all_number_of_samples=int(len(weights)*self.train_val_split),
+            config=config,
             data_type="training",
             weighted_sampling=not (self.loss_weighting),
             device=self.device,
-            bins_pt=config["bins_pt"],
-            bins_eta=config["bins_eta"],
             verbose=self.verbose,
-            config=config,
             batch_size=self.batch_size,
+            out_precision=self.training_precision,
         )
 
         #print(f"Memory usage after training dataset loading: {check_memory_usage():.4f} GiB")
         
         validation_data = datasetClass(
-            validation_files,
+            files=validation_files,
             model=model,
-            config_truths=list(config['truths']),
-            all_number_of_samples=len(weights) - int(len(weights)*self.train_val_split),
+            config=config,
             data_type="validation",
             weighted_sampling=not (self.loss_weighting),
             device=self.device,
-            bins_pt=config["bins_pt"],
-            bins_eta=config["bins_eta"],
             verbose=self.verbose,
-            config=config,
             batch_size=self.batch_size,
+            out_precision=self.training_precision,
         )
 
         #print(f"Memory usage after validation dataset loading: {check_memory_usage():.4f} GiB")
@@ -316,7 +318,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
         # Define the corresponding dataloaders
         training_dataloader = DataLoader(
             training_data,
-            batch_size = self.batch_size if config["dataset"] not in {"LZ4FP16Dataset", "LZ4Dataset", "LZ4PAIReDDataset"} else None,
+            batch_size = None,#self.batch_size if config["dataset"] not in {"LZ4FP16Dataset", "LZ4Dataset", "LZ4PAIReDDataset"} else None,
             drop_last=False,
             pin_memory=True,  # Pin Memory for faster CPU/GPU memory load
             num_workers=self.n_threads,
@@ -332,7 +334,7 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
 
         validation_dataloader = DataLoader(
             validation_data,
-            batch_size = self.batch_size if config["dataset"] not in {"LZ4FP16Dataset", "LZ4Dataset", "LZ4PAIReDDataset"} else None,
+            batch_size = None,#self.batch_size if config["dataset"] not in {"LZ4FP16Dataset", "LZ4Dataset", "LZ4PAIReDDataset"} else None,
             drop_last=False,
             pin_memory=True,
             num_workers=self.n_threads,

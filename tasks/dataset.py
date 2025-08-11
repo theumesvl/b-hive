@@ -46,6 +46,7 @@ class DatasetConstructorTask(DatasetDependency, BaseTask):
         return {
             "file_list": self.local_target("processed_files.txt"),
             "histogram": self.local_target("histogram.npy"),
+            "weights":   self.local_target("weights.json"),
         }
 
     def run(self):
@@ -95,13 +96,17 @@ class DatasetConstructorTask(DatasetDependency, BaseTask):
             npf_custom_features=config.get("npf_custom_features", []),
             vtx_features=config.get("vtx_features", []),
             vtx_custom_features=config.get("vtx_custom_features", []),
+            lt_candidates=config.get("lt_candidates", []),
+            lt_custom_features=config.get("lt_custom_features", []),
             n_cpf_candidates=config.get("n_cpf_candidates", 50),
             n_npf_candidates=config.get("n_npf_candidates", 50),
             n_vtx_features=config.get("n_vtx_candidates", 5),
+            n_lt_candidates=config.get("n_lt_candidates", 5),
             pt_key=config.get("pt_key", "jet_pt"),
             eta_key=config.get("eta_key", "jet_eta"),
             truths=config.get("truths", None),
-        )        
+            precision=config.get("data_precision", 'float32'),
+        )  
         print(f"Processor: {config.get('processor', 'PFCandidateAndVertexProcessing')}")
 
         output = futures_run(
@@ -129,8 +134,6 @@ class DatasetConstructorTask(DatasetDependency, BaseTask):
         )
 
         print("Start merging files")
-        pt_key_index = config.get("global_features").index(config.get("pt_key", "jet_pt"))
-        eta_key_index = config.get("global_features").index(config.get("eta_key", "jet_eta"))
         # returns list of merged training-files
         all_files += merge_datasets(
             file_list,
@@ -144,9 +147,12 @@ class DatasetConstructorTask(DatasetDependency, BaseTask):
             reference_key=list(config["truths"]).index(config["reference_flavour"]), #reference_key is the histogram index for LZ4 dataset
             bins_pt=config["bins_pt"],
             bins_eta=config["bins_eta"],
-            pt_key_index=pt_key_index,
-            eta_key_index=eta_key_index,
+            pt_key=config.get("pt_key", "jet_pt"),
+            eta_key=config.get("eta_key", "jet_eta"),
+            global_features=config.get("global_features", []),
+            precision=config.get("data_precision", 'float32'),
         )
+        '''
         if "LZ4" not in config.get("processor", "PFCandidateAndVertexProcessing"):
             # delete unmerged files
             for file in file_list:
@@ -163,5 +169,5 @@ class DatasetConstructorTask(DatasetDependency, BaseTask):
                 pt_key=config.get("pt_key", "jet_pt"),
                 eta_key=config.get("eta_key", "jet_eta"),
             )
-
+        '''
         self.output()["file_list"].dump("\n".join(all_files), formatter="text")

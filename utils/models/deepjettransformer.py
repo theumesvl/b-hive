@@ -123,7 +123,7 @@ class LinLayer2(nn.Module):
 class InputProcess(nn.Module):
 
     def __init__(self, cpf_dim, npf_dim, vtx_dim, embed_dim, **kwargs):
-        super(InputProcess, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         
         self.cpf_bn0 = torch.nn.BatchNorm1d(cpf_dim, eps = 0.001, momentum = 0.1)
         self.cpf_conv1 = InputConv(cpf_dim,embed_dim)
@@ -157,10 +157,10 @@ class InputProcess(nn.Module):
         
         return out
 
-class InputProcess_HLT(nn.Module):
+class InputProcess_HLT_old(nn.Module):
 
     def __init__(self, cpf_dim, vtx_dim, embed_dim, **kwargs):
-        super(InputProcess_HLT, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self.cpf_bn0 = torch.nn.BatchNorm1d(cpf_dim, eps = 0.001, momentum = 0.1)
         self.cpf_conv1 = InputConv(cpf_dim,embed_dim)
@@ -183,6 +183,47 @@ class InputProcess_HLT(nn.Module):
         out = torch.cat((cpf,vtx), dim = 2)
         out = torch.transpose(out, 1, 2)
         
+        return out
+
+class InputConv_HLT(nn.Module):
+
+    def __init__(self, in_chn, out_chn, dropout_rate = 0.1, **kwargs):
+        super().__init__(**kwargs)
+        
+        self.lin = torch.nn.Linear(in_chn, out_chn)
+        self.bn1 = RMSNorm(in_chn)
+        self.act = nn.SiLU()
+        self.dropout = nn.Dropout(dropout_rate)
+
+    def forward(self, x, sc, skip = True):
+        
+        x2 = self.dropout(self.act(self.lin(self.bn1(x))))
+        if skip:
+            x = sc + x2
+        else:
+            x = x2
+        return x
+
+class InputProcess_HLT(nn.Module):
+    def __init__(self, cpf_dim, vtx_dim, embed_dim, **kwargs):
+        super().__init__(**kwargs)
+
+        self.cpf_conv1 = InputConv_HLT(cpf_dim, embed_dim)
+        self.cpf_conv3 = InputConv_HLT(embed_dim * 1, embed_dim)
+
+        self.vtx_conv1 = InputConv_HLT(vtx_dim, embed_dim)
+        self.vtx_conv3 = InputConv_HLT(embed_dim * 1, embed_dim)
+
+    def forward(self, cpf, vtx):
+    
+        cpf = self.cpf_conv1(cpf, cpf, skip=False)
+        cpf = self.cpf_conv3(cpf, cpf, skip=True)
+
+        vtx = self.vtx_conv1(vtx, vtx, skip=False)
+        vtx = self.vtx_conv3(vtx, vtx, skip=True)
+
+        out = torch.cat((cpf, vtx), dim=1)
+
         return out
         
 class DenseClassifier(nn.Module):
@@ -270,9 +311,9 @@ class HF_TransformerEncoderLayer(nn.Module):
             src,
             src,
             src,
-            attn_mask=mask,
-            #attn_mask=merged_mask.reshape(-1, merged_mask.shape[2], merged_mask.shape[2]),
+            key_padding_mask=mask,
         )[0]
+
         src = residual + src
         residual = src
 
@@ -362,10 +403,6 @@ class DeepJetTransformer(Classifier_base):
         "Cpfcan_e"
     ]
     
-    npf_candidates = [
-        "Npfcan_ptrel"
-    ]
-    
     vtx_features = [
         "sv_deltaR",
         "sv_normchi2",
@@ -389,15 +426,14 @@ class DeepJetTransformer(Classifier_base):
         build_4v=True,
         **kwargs
     ):
-        super().__init__(**kwargs)
-
-        self.config = config
+        super().__init__(config, **kwargs)
+        
         self.for_inference = for_inference
         self.num_enc_layers = num_enc
         self.num_head = num_head
         self.dtype = torch.float16
 
-        _, cpf_dim, npf_dim, vtx_dim = self.all_model_features_length()  
+        _, cpf_dim, npf_dim, vtx_dim, _ = self.all_model_features_length()  
         
         self.InputProcess = InputProcess(cpf_dim, npf_dim, vtx_dim, embed_dim)
         self.Linear = nn.Linear(embed_dim, num_classes)
@@ -416,11 +452,10 @@ class DeepJetTransformer(Classifier_base):
 
         padding_mask = torch.cat((cpf.abs().sum(dim=-1), npf.abs().sum(dim=-1), vtx.abs().sum(dim=-1)), dim = 1)
         padding_mask = torch.eq(padding_mask, 0.0)
-        mask = (padding_mask.unsqueeze(1) + padding_mask.unsqueeze(2)).to(cpf.dtype).repeat((self.num_head,1,1)) * torch.finfo(self.dtype).min
         pool_mask = padding_mask.unsqueeze(dim=1) * torch.finfo(self.dtype).min
         
         enc = self.InputProcess(cpf, npf, vtx)
-        enc = self.Encoder(enc, mask)
+        enc = self.Encoder(enc, padding_mask)
         enc = self.Pooling(enc, pool_mask)
         
         x = self.DenseClassifier(enc)
@@ -443,6 +478,12 @@ class DeepJetTransformerHLT(Classifier_base):
         "taup": ["label_taup"],
         "taum": ["label_taum"],
     }
+    
+    n_cpf_candidates = 20
+    n_lt_candidates = 3
+    n_npf_candidates = 15
+    n_vtx_candidates = 2
+    
     cpf_candidates = [
         "jet_pfcand_deta",
         "jet_pfcand_dphi",
@@ -491,45 +532,6 @@ class DeepJetTransformerHLT(Classifier_base):
         "vtx_features": ["jet_sv_ntrack"],
     }
 
-    def get_inpt(self, x, truth=None, loss_fn=None, attack=None, device='cpu'):
-
-        glob, cpf, npf, vtx = x.split(self.feature_lengths.tolist(), dim=1)
-        
-        glob = glob.reshape(glob.shape[0], -1)
-        cpf = cpf.reshape(cpf.shape[0], self.input_dims[1][0], -1)
-        npf = npf.reshape(npf.shape[0], self.input_dims[2][0], 0)
-        vtx = vtx.reshape(vtx.shape[0], self.input_dims[3][0], -1)
-
-        # Subselect features
-        glob = self._subselect_features(glob, "global_features", "global_custom_features")
-        cpf = self._subselect_features(cpf, "cpf_candidates", "cpf_custom_features")
-        npf = self._subselect_features(npf, "npf_candidates", "npf_custom_features")
-        vtx = self._subselect_features(vtx, "vtx_features", "vtx_custom_features")
-
-        if attack is not None:
-            (
-                glob,
-                cpf,
-                npf,
-                vtx,
-                truth,
-            ) = attack(
-                [
-                    feature.float().to(device)
-                    for feature in [
-                        glob,
-                        cpf,
-                        npf,
-                        vtx,
-                        ]
-                    ],
-                truth.type(torch.LongTensor).to(device),
-                self,
-                loss_fn,
-            ) 
-        
-        return (glob.detach(), cpf.detach(), npf.detach(), vtx.detach()), truth
-
     def __init__(
         self,
         config,
@@ -541,15 +543,14 @@ class DeepJetTransformerHLT(Classifier_base):
         build_4v=True,
         **kwargs
     ):
-        super().__init__(**kwargs)
+        super().__init__(config, **kwargs)
         
-        self.config = config
         self.for_inference = for_inference
         self.num_enc_layers = num_enc
         self.num_head = num_head
         self.dtype = torch.float16
 
-        _, cpf_dim, _, vtx_dim = self.all_model_features_length()  
+        _, cpf_dim, _, vtx_dim, _ = self.all_model_features_length()  
         
         self.InputProcess = InputProcess_HLT(cpf_dim, vtx_dim, embed_dim)
         self.Linear = nn.Linear(embed_dim, num_classes)
@@ -568,11 +569,10 @@ class DeepJetTransformerHLT(Classifier_base):
 
         padding_mask = torch.cat((cpf.abs().sum(dim=-1), vtx.abs().sum(dim=-1)), dim = 1)
         padding_mask = torch.eq(padding_mask, 0.0)
-        mask = (padding_mask.unsqueeze(1) + padding_mask.unsqueeze(2)).to(cpf.dtype).repeat((self.num_head,1,1)) * torch.finfo(self.dtype).min
-        pool_mask = padding_mask.unsqueeze(dim=1) * torch.finfo(self.dtype).min
-        
+        pool_mask = padding_mask.unsqueeze(dim=1) * torch.finfo(self.dtype).min #float('inf')#
+
         enc = self.InputProcess(cpf, vtx)
-        enc = self.Encoder(enc, mask)
+        enc = self.Encoder(enc, padding_mask)
         enc = self.Pooling(enc, pool_mask)
         
         x = self.DenseClassifier(enc)
@@ -674,14 +674,13 @@ class GlobalDeepJetTransformerHLT(DeepJetTransformerHLT):
         **kwargs
     ):
         super().__init__(config, **kwargs)
-
-        self.config = config
+        
         self.for_inference = for_inference
         self.num_enc_layers = num_enc
         self.num_head = num_head
         self.dtype = torch.float16
 
-        global_dim, cpf_dim, _, vtx_dim = self.all_model_features_length()
+        global_dim, cpf_dim, _, vtx_dim, _ = self.all_model_features_length()
         
         self.global_bn = torch.nn.BatchNorm1d(global_dim, eps=0.001, momentum=0.6)
         self.InputProcess = InputProcess_HLT(cpf_dim, vtx_dim, embed_dim)
@@ -734,10 +733,7 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
         **kwargs
     ):
         super().__init__(config, **kwargs)
-
-        self.dtype = torch.float16
         
-        self.config = config
         self.for_inference = for_inference
         self.num_enc_layers = num_enc
         self.num_head = num_head
@@ -749,9 +745,14 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
 
         self.taup_index = list(self.classes).index('taup')
         self.taum_index = list(self.classes).index('taum')
-        self.tau_indices = torch.Tensor([list(self.classes).index(key) for key in list(self.classes) if "tau" in key])
-
-        _, cpf_dim, _, vtx_dim = self.all_model_features_length()
+        self.register_buffer(
+            "tau_indices",
+            torch.tensor(
+                [i for i, k in enumerate(self.classes) if "tau" in k],
+                dtype=torch.long
+            )
+        )
+        _, cpf_dim, _, vtx_dim, _ = self.all_model_features_length()
         
         self.InputProcess = InputProcess_HLT(cpf_dim, vtx_dim, embed_dim)
         self.Linear = nn.Linear(embed_dim, num_classes + 1)
@@ -910,15 +911,6 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
     def step(self, inpt, truth, loss_fn, target_pt, attack=None, device="cpu", mixed_precision=True):
         with torch.autocast(device, enabled=mixed_precision):
             pred_cat, pred_reg = self.forward(inpt)
-        print(f"pred_cat.shape = {pred_cat.shape}")
-        print(f"pred_reg.shape = {pred_reg.shape}")
-        print(f"truth.shape = {truth.shape}")
-        print(f"type(truth) = {type(truth)}")
-        print(f"truth = {truth}")
-        print(f"torch.unique(truth) = {torch.unique(truth)}")
-        print(f"device = {device}")
-        print(f"target_pt = {target_pt}")
-        print(f"target_pt.shape = {target_pt.shape}")
         loss, loss_cat, loss_reg = loss_fn(pred_cat, truth, pred_reg, target_pt, device)  
         return pred_cat, loss, loss_cat, loss_reg
 
@@ -980,7 +972,7 @@ class UDeepJetTransformerHLT(DeepJetTransformerHLT):
                         target_pt=target_pt,
                         device=device, mixed_precision=self.mixed_precision
                     )
-                if torch.isnan(loss).any():
+                if torch.isnan(loss).any():    
                     raise ValueError("Loss contains NaN values! Something's wrong with calculation, please check.")
         
                 optimizer.zero_grad(set_to_none=True)

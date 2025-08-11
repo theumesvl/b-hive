@@ -615,9 +615,7 @@ class FP16ParticleTransformer(Classifier_base):
     ):
         super(FP16ParticleTransformer, self).__init__(**kwargs)
 
-        cpf_dim = len(config['cpf_candidates']) - 4
-        npf_dim = len(config['npf_candidates']) - 4
-        vtx_dim = len(config['vtx_features']) - 4
+        _, cpf_dim, npf_dim, vtx_dim, _ = self.all_model_features_length()
         
         self.for_inference = for_inference
         self.build_4v = build_4v
