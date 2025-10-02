@@ -22,7 +22,7 @@ DEST_FILE="$TESTDIRECTORY/data/HLT/hlt_test_TT.root"
 if [ ! -f $DEST_FILE ]; then
     echo "Copying test file to: $DEST_FILE"
     # Define the source file path
-    SOURCE_FILE=/eos/cms/store/group/phys_btag/b-hive/test_files/data/hlt/out_1.root
+    SOURCE_FILE=/eos/cms/store/group/phys_btag/b-hive/test_files/data/hlt/out_TT_1.root
     if [ -f "$SOURCE_FILE" ]; then
         echo "File exists locally."
         cp $SOURCE_FILE $DEST_FILE
