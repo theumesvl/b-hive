@@ -7,14 +7,14 @@ torch.set_float32_matmul_precision("medium")
 
 def make_tensor(value, device, pin_memory_cpu=True):
     try:
-        if device == 'cpu' and pin_memory_cpu:
-            return torch.tensor(value, pin_memory=True)
+        if device != 'cpu' and pin_memory_cpu:
+            return torch.tensor(value, pin_memory=True, device=device)
         else:
-            return torch.tensor(value).to(device)
+            return torch.tensor(value, device=device)
     except RuntimeError as e:
         if 'pin_memory' in str(e):
             # Fallback: silently ignore pin_memory if unsupported
-            return torch.tensor(value).to(device)
+            return torch.tensor(value, device=device)
         else:
             raise
 
