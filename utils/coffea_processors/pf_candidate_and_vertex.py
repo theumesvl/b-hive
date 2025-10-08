@@ -11,16 +11,22 @@ from utils.dataset.structured_arrays import (
 
 class PFCandidateAndVertexProcessing(DataPreprocessing_BaseClass):
     def callColumnAccumulator(self, output, events, flag, **kwargs):
-        # slicing based on p_T and eta
-        pt_slice = np.logical_and(
-            ak.to_numpy(ak.flatten(events[self.pt_key], axis=0)) >= min(self.bins_pt),
-            ak.to_numpy(ak.flatten(events[self.pt_key], axis=0)) < max(self.bins_pt),
-        )
-        eta_slice = np.logical_and(
-            ak.to_numpy(ak.flatten(events[self.eta_key], axis=0)) >= min(self.bins_eta),
-            ak.to_numpy(ak.flatten(events[self.eta_key], axis=0)) < max(self.bins_eta),
-        )
 
+        pt_and_eta_slicing = self._bins_pt_provided and self._bins_eta_provided
+        # slicing based on p_T and eta
+        if pt_and_eta_slicing:
+            pt_slice = np.logical_and(
+                ak.to_numpy(ak.flatten(events[self.pt_key], axis=0)) >= min(self.bins_pt),
+                ak.to_numpy(ak.flatten(events[self.pt_key], axis=0)) < max(self.bins_pt),
+            )
+            eta_slice = np.logical_and(
+                ak.to_numpy(ak.flatten(events[self.eta_key], axis=0)) >= min(self.bins_eta),
+                ak.to_numpy(ak.flatten(events[self.eta_key], axis=0)) < max(self.bins_eta),
+            )
+        else:
+            pt_slice = np.ones(len(events), dtype=bool)
+            eta_slice = np.ones(len(events), dtype=bool)
+    
         if isinstance(self.truths, dict):
             truth_arr = structured_array_from_tree_truth_from_dict(
                 events=events,

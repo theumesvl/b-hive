@@ -3,6 +3,7 @@ from utils.coffea_processors.lz4_processor import LZ4Processing
 from utils.coffea_processors.l1_processor import L1PFCandidateAndVertexProcessing 
 from utils.coffea_processors.custom_selections import PairedTaggerProcessor
 from utils.coffea_processors.lz4_custom_selections import LZ4_PairedTaggerProcessor
+from utils.coffea_processors.lz4_ttcc_processor import LZ4TTCCProcessor
 
 class ProcessorClasses:
     PFCandidateAndVertexProcessing = "PFCandidateAndVertexProcessing" 
@@ -10,6 +11,7 @@ class ProcessorClasses:
     L1PFCandidateAndVertexProcessing = "L1PFCandidateAndVertexProcessing"
     PairedTaggerProcessor = "PairedTaggerProcessor"
     LZ4_PairedTaggerProcessor = "LZ4_PairedTaggerProcessor"
+    LZ4TTCCProcessor = "LZ4TTCCProcessor"
 
 
 def ProcessorLoader(model: str = "", *args, **kwargs):
@@ -24,6 +26,8 @@ def ProcessorLoader(model: str = "", *args, **kwargs):
             return PairedTaggerProcessor(*args, **kwargs)
         case ProcessorClasses.LZ4_PairedTaggerProcessor:
             return LZ4_PairedTaggerProcessor(*args, **kwargs)
+        case ProcessorClasses.LZ4TTCCProcessor:
+            return LZ4TTCCProcessor(*args, **kwargs)
         case _:
             return PFCandidateAndVertexProcessing(*args, **kwargs) 
 

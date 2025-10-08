@@ -38,10 +38,13 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
         n_lt_candidates=0,
         pt_key: str = None,
         eta_key: str = None,
+        selections: List[str] = None,
     ):
         self._accumulator = processor.dict_accumulator({})
-        self.bins_eta = bins_eta
-        self.bins_pt = bins_pt
+        self._bins_pt_provided = bins_pt is not None
+        self._bins_eta_provided = bins_eta is not None
+        self.bins_pt = bins_pt if bins_pt is not None else [0.0, 1.0] # allow configs without bins
+        self.bins_eta = bins_eta if bins_eta is not None else [0.0, 1.0]
         self.output_dir = output_directory
         self.precision = np.dtype(precision).type
         self.prefix = prefix
@@ -63,6 +66,7 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
         self.n_lt  = n_lt_candidates
         self.pt_key = pt_key
         self.eta_key = eta_key
+        self.selections = selections
         if self.processes is None:
             self.processes = []
 

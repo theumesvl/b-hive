@@ -1,0 +1,86 @@
+#bins_pt:
+#- 0
+#- 1  
+#
+#bins_eta:
+#- 0
+#- 1 
+pt_key:
+  "n_btagM"
+
+eta_key:
+  "n_btagM"
+
+processor: 
+ "LZ4TTCCProcessor"
+
+use_inverse_class_weight:
+ True
+
+treename:
+  "Events"
+ # "DeepJetNTupler/DeepJetvars"
+
+global_features:
+- "nJet"
+- "n_btagT"
+- "n_btagM"
+- "n_ctagL"
+- "n_ctagM"
+- "n_ctagT"
+- "mll"
+- "is_CR1_4j"
+- "is_CR2_4j"
+- "is_CR3_4j"
+- "is_SRl_4j"
+- "is_SRt_4j"
+#- "jet_pt"
+#- "jet_eta"
+#- "jet_phi"
+#- "jet_energy"
+#- "jet_pt_corr"
+#- "jet_mass"
+#- "jet_mass_corr"
+#- "jet_chf"
+#- "jet_nhf"
+#- "jet_phf"
+#- "jet_elf"
+#- "jet_muf"
+#- "jet_ncand"
+cpf_candidates:
+- "Jet_btagPNetBvC"
+- "Jet_btagPNetC"
+- "Jet_pt"
+- "Jet_eta"
+- "Jet_phi"
+- "Jet_mass"
+
+vtx_features:
+- "Lepton_pt"
+- "Lepton_eta"
+- "Lepton_phi"
+- "Lepton_mass"
+
+n_cpf_candidates: 6
+n_vtx_candidates: 2
+n_npf_candidates: 0
+
+truths:
+- "is_ttbb"
+- "is_ttb"
+- "is_ttcc"
+- "is_ttc"
+- "is_ttother"
+
+reference_flavour:
+ "is_ttbb"
+
+use_inverse_class_weight: true
+
+selections:
+- "is_CR1_4j"
+- "is_CR2_4j"
+- "is_CR3_4j"
+- "is_SRl_4j"
+- "is_SRt_4j"
+
