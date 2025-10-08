@@ -106,6 +106,7 @@ class DatasetConstructorTask(DatasetDependency, BaseTask):
             eta_key=config.get("eta_key", "jet_eta"),
             truths=config.get("truths", None),
             precision=config.get("data_precision", 'float32'),
+            selections=config.get("selections", None),
             use_inverse_class_weight=config.get("use_inverse_class_weight", False),
         )  
         print(f"Processor: {config.get('processor', 'PFCandidateAndVertexProcessing')}")
