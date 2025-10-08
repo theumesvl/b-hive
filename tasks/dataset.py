@@ -106,6 +106,7 @@ class DatasetConstructorTask(DatasetDependency, BaseTask):
             eta_key=config.get("eta_key", "jet_eta"),
             truths=config.get("truths", None),
             precision=config.get("data_precision", 'float32'),
+            use_inverse_class_weight=config.get("use_inverse_class_weight", False),
         )  
         print(f"Processor: {config.get('processor', 'PFCandidateAndVertexProcessing')}")
 
@@ -151,6 +152,7 @@ class DatasetConstructorTask(DatasetDependency, BaseTask):
             eta_key=config.get("eta_key", "jet_eta"),
             global_features=config.get("global_features", []),
             precision=config.get("data_precision", 'float32'),
+            use_inverse_class_weight=config.get("use_inverse_class_weight", False),
         )
         '''
         if "LZ4" not in config.get("processor", "PFCandidateAndVertexProcessing"):

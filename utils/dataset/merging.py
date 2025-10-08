@@ -71,7 +71,8 @@ def merge_datasets(
     pt_key=None,
     eta_key=None,
     global_features=None,
-    precision='float32'
+    precision='float32',
+    use_inverse_class_weight=False,
 ):
     if shuffle:
         np.random.shuffle(files)
@@ -79,26 +80,39 @@ def merge_datasets(
     file_list = []
     dtype = np.dtype(precision).type
 
-    reference_histogram = histograms[reference_key] #reference_key is an index in the context of LZ4 datasets
-    reference_histogram = reference_histogram / np.max(reference_histogram)
     weights_list = []
     weights_list_sum = []
     chuck_size_list = []
-    for c in range(histograms.shape[0]):
-        other_histogram = histograms[c]
-        max_hist = np.max(other_histogram)
-        if max_hist != 0:
-            other_histogram = other_histogram / max_hist
-        with np.errstate(divide="ignore", invalid="ignore"):
-            weights = np.where(other_histogram > 0, reference_histogram / other_histogram, -10)
-            weights = weights / np.max(weights)
         
-        weights[weights < 0] = 1
-        weights[np.isnan(weights)] = 1
-        
-        weights_list.append(weights)
-        
-    weights_list = np.array(weights_list)
+    if use_inverse_class_weight:
+        # Inverse class frequency weighting using histogram sums
+        #print("Using inverse class frequency weighting...")
+        class_counts = np.array([histograms[c].sum() for c in range(histograms.shape[0])], dtype=np.float64)
+        # Calculate inverse weights: smallest class / each class
+        # This gives weight=1.0 to smallest class, and proportionally less to larger classes
+        inv = class_counts.min() / class_counts
+        #print(f"Inverse class weights: {inv}")
+        weights_list = inv.astype(np.float32)
+
+    else:
+        reference_histogram = histograms[reference_key] #reference_key is an index in the context of LZ4 datasets
+        reference_histogram = reference_histogram / np.max(reference_histogram)
+        for c in range(histograms.shape[0]):
+            other_histogram = histograms[c]
+            max_hist = np.max(other_histogram)
+            if max_hist != 0:
+                other_histogram = other_histogram / max_hist
+            with np.errstate(divide="ignore", invalid="ignore"):
+                weights = np.where(other_histogram > 0, reference_histogram / other_histogram, -10)
+                weights = weights / np.max(weights)
+            
+            weights[weights < 0] = 1
+            weights[np.isnan(weights)] = 1
+            
+            weights_list.append(weights)
+            
+        weights_list = np.array(weights_list)
+
     weight_filename = os.path.join(path, "weights.json")
 
     with Progress(
@@ -160,12 +174,15 @@ def merge_datasets(
                     s2 = ~np.isinf(chunk_to_process).any(axis = 1)
                     chunk_to_process = chunk_to_process[s1*s2]
 
-                    pt_coordinate  = np.digitize(chunk_to_process[:, pt_key_index],  bins_pt)  - 1
-                    eta_coordinate = np.digitize(chunk_to_process[:, eta_key_index], bins_eta) - 1
-        
                     flavour_idx = np.argmax(chunk_to_process[:,-histograms.shape[0]:], axis=-1)
+
+                    if use_inverse_class_weight:
+                        w = weights_list[flavour_idx].astype(dtype)
+                    else:
+                        pt_coordinate  = np.digitize(chunk_to_process[:, pt_key_index],  bins_pt)  - 1
+                        eta_coordinate = np.digitize(chunk_to_process[:, eta_key_index], bins_eta) - 1
+                        w = weights_list[flavour_idx, pt_coordinate, eta_coordinate].astype(dtype)
                     
-                    w = weights_list[flavour_idx, pt_coordinate, eta_coordinate].astype(dtype)
                     chunk_to_process = np.concatenate((chunk_to_process,w.reshape(-1,1)), axis=1)
                     size = np.array(chunk_to_process.shape).astype(dtype)
         

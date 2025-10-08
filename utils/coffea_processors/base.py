@@ -39,6 +39,7 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
         pt_key: str = None,
         eta_key: str = None,
         selections: List[str] = None,
+        use_inverse_class_weight: bool = False,
     ):
         self._accumulator = processor.dict_accumulator({})
         self._bins_pt_provided = bins_pt is not None
@@ -67,17 +68,22 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
         self.pt_key = pt_key
         self.eta_key = eta_key
         self.selections = selections
+        self.use_inverse_class_weight = use_inverse_class_weight
         if self.processes is None:
             self.processes = []
 
         self.truth_hists = {}
 
         for truth in self.truths:
-            self.truth_hists[truth] = (
-                hist.Hist.new.Variable(self.bins_pt, name="pt")
-                .Variable(self.bins_eta, name="eta")
-                .Int64()
-            )
+            if self.use_inverse_class_weight:
+                # will use the class counts for weights
+                self.truth_hists[truth] = hist.Hist.new.Variable([0.0, 1.0], name="count").Int64()
+            else:
+                self.truth_hists[truth] = (
+                    hist.Hist.new.Variable(self.bins_pt, name="pt")
+                    .Variable(self.bins_eta, name="eta")
+                    .Int64()
+                )
         self.setFeatureNamesAndEdges()
 
     def setFeatureNamesAndEdges(self):
@@ -157,10 +163,17 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
         )
         
         for truth_label in self.truths:
-            self.truth_hists[truth_label].fill(
-                global_arr[self.pt_key][truth[truth_label]],
-                global_arr[self.eta_key][truth[truth_label]],
-            )
+            if self.use_inverse_class_weight:
+                # for class counting, fill 1D histogram with dummy values
+                n_events = truth[truth_label].sum()
+                self.truth_hists[truth_label].fill(
+                    np.zeros(n_events, dtype=self.precision),
+                )
+            else:
+                self.truth_hists[truth_label].fill(
+                    global_arr[self.pt_key][truth[truth_label]],
+                    global_arr[self.eta_key][truth[truth_label]],
+                )
 
         output_location = os.path.join(
             self.output_dir, f"{self.prefix}{dataset}_{filename}_{start}_{stop}.npz"
