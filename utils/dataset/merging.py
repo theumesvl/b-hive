@@ -91,7 +91,8 @@ def merge_datasets(
         # Calculate inverse weights: smallest class / each class
         # This gives weight=1.0 to smallest class, and proportionally less to larger classes
         inv = class_counts.min() / class_counts
-        #print(f"Inverse class weights: {inv}")
+        print(f"Class counts: {class_counts}")
+        print(f"Inverse class weights: {inv}")
         weights_list = inv.astype(np.float32)
 
     else:
