@@ -22,8 +22,9 @@ treename:
 
 global_features:
 - "nJet"
-- "n_btagT"
 - "n_btagM"
+- "n_btagT"
+- "n_ctagVL"
 - "n_ctagL"
 - "n_ctagM"
 - "n_ctagT"
@@ -47,6 +48,7 @@ global_features:
 #- "jet_muf"
 #- "jet_ncand"
 cpf_candidates:
+- "Jet_tagBin"
 - "Jet_btagPNetBvC"
 - "Jet_btagPNetC"
 - "Jet_pt"

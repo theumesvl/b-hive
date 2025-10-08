@@ -1,0 +1,10 @@
+/eos/home-j/jusong/samples/ttcc/column/Oct25_train/output_41.root
+/eos/home-j/jusong/samples/ttcc/column/Oct25_train/output_42.root
+/eos/home-j/jusong/samples/ttcc/column/Oct25_train/output_43.root
+/eos/home-j/jusong/samples/ttcc/column/Oct25_train/output_44.root
+/eos/home-j/jusong/samples/ttcc/column/Oct25_train/output_45.root
+/eos/home-j/jusong/samples/ttcc/column/Oct25_train/output_46.root
+/eos/home-j/jusong/samples/ttcc/column/Oct25_train/output_47.root
+/eos/home-j/jusong/samples/ttcc/column/Oct25_train/output_48.root
+/eos/home-j/jusong/samples/ttcc/column/Oct25_train/output_49.root
+/eos/home-j/jusong/samples/ttcc/column/Oct25_train/output_50.root
