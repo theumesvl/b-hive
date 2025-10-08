@@ -10,6 +10,14 @@ class ModelName:
     ParticleTransformer2_LT_tau_Big = "ParticleTransformer2_LT_tau_Big"
     ParticleTransformer2_LT_tau_Huge = "ParticleTransformer2_LT_tau_Huge"
     ParticleTransformerHLT = "ParticleTransformerHLT"
+    ParticleTransformer_ttcc = "ParticleTransformer_ttcc"
+    ParticleTransformer_ttb_binary = "ParticleTransformer_ttb_binary"
+    ParticleTransformer_ttc_binary = "ParticleTransformer_ttc_binary"
+    ParticleTransformer_ttcc_3class = "ParticleTransformer_ttcc_3class"
+    ParticleTransformer2_ttcc = "ParticleTransformer2_ttcc"
+    ParticleTransformer2_ttb_binary = "ParticleTransformer2_ttb_binary"
+    ParticleTransformer2_ttc_binary = "ParticleTransformer2_ttc_binary"
+    ParticleTransformer2_ttcc_3class = "ParticleTransformer2_ttcc_3class"
     GlobalParticleTransformerHLT = "GlobalParticleTransformerHLT"
     UParT_v0 = "UParT_v0"
     FP16ParticleTransformer = "FP16ParticleTransformer"
@@ -71,6 +79,30 @@ def BTaggingModels(model: str = "", *args, **kwargs):
         case ModelName.ParticleTransformerHLT:
             from utils.models.particletransformer import ParticleTransformerHLT
             return ParticleTransformerHLT(*args, **kwargs)
+        case ModelName.ParticleTransformer_ttcc:
+            from utils.models.particletransformer_ttcc import ParticleTransformer_ttcc
+            return ParticleTransformer_ttcc(*args, **kwargs)
+        case ModelName.ParticleTransformer_ttb_binary:
+            from utils.models.particletransformer_ttcc import ParticleTransformer_ttb_binary
+            return ParticleTransformer_ttb_binary(*args, **kwargs)
+        case ModelName.ParticleTransformer_ttc_binary:
+            from utils.models.particletransformer_ttcc import ParticleTransformer_ttc_binary
+            return ParticleTransformer_ttc_binary(*args, **kwargs)
+        case ModelName.ParticleTransformer_ttcc_3class:
+            from utils.models.particletransformer_ttcc import ParticleTransformer_ttcc_3class
+            return ParticleTransformer_ttcc_3class(*args, **kwargs)
+        case ModelName.ParticleTransformer2_ttcc:
+            from utils.models.particletransformer2_ttcc import ParticleTransformer2_ttcc
+            return ParticleTransformer2_ttcc(*args, **kwargs)
+        case ModelName.ParticleTransformer2_ttb_binary:
+            from utils.models.particletransformer2_ttcc import ParticleTransformer2_ttb_binary
+            return ParticleTransformer2_ttb_binary(*args, **kwargs)
+        case ModelName.ParticleTransformer2_ttc_binary:
+            from utils.models.particletransformer2_ttcc import ParticleTransformer2_ttc_binary
+            return ParticleTransformer2_ttc_binary(*args, **kwargs)
+        case ModelName.ParticleTransformer2_ttcc_3class:
+            from utils.models.particletransformer2_ttcc import ParticleTransformer2_ttcc_3class
+            return ParticleTransformer2_ttcc_3class(*args, **kwargs)
         case ModelName.GlobalParticleTransformerHLT:
             from utils.models.particletransformer import GlobalParticleTransformerHLT
             return GlobalParticleTransformerHLT(*args, **kwargs)
