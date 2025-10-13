@@ -4,6 +4,7 @@ from collections import defaultdict
 import uuid
 import luigi
 import numpy as np
+import awkward as ak
 from coffea import processor
 from coffea.nanoevents import BaseSchema
 
@@ -64,23 +65,21 @@ class DatasetConstructorTask(DatasetDependency, BaseTask):
         samples = read_in_samples_match_processes(self.filelist, config["processes"])
         print('Number of files:', len(samples))
 
+        print('samples', samples)
         if self.debug:
             # skim files to only 10 files per process
             samples = {
                 key: values[0 : min(len(samples), 1)] for key, values in samples.items()
             }
+        
+        # Check file type from first sample
+        first_file = next(iter(samples.values()))[0]
+        is_parquet = first_file.endswith('.parquet')
+        is_root = first_file.endswith('.root')
+        
+        print(f"File type detected: {'Parquet' if is_parquet else 'ROOT' if is_root else 'Unknown'}")
 
         # Make a dictionary entry for all of them:
-
-        futures_run = processor.Runner(
-            executor=processor.FuturesExecutor(
-                compression=None, 
-                workers=self.coffea_worker
-            ),
-            schema=BaseSchema,
-            chunksize=self.chunk_size // 20,  # should be << chunk_size in order to get everything shuffled correctly
-            maxchunks=None if not (self.debug) else 20,
-        )
 
         processorClass = ProcessorLoader(
             config.get("processor", "PFCandidateAndVertexProcessing"),  
@@ -111,11 +110,68 @@ class DatasetConstructorTask(DatasetDependency, BaseTask):
         )  
         print(f"Processor: {config.get('processor', 'PFCandidateAndVertexProcessing')}")
 
-        output = futures_run(
-            samples,
-            treename=config["treename"],
-            processor_instance=processorClass
-        )
+        if is_root:
+            # Original Coffea Runner for ROOT files
+            futures_run = processor.Runner(
+                executor=processor.FuturesExecutor(
+                    compression=None, 
+                    workers=self.coffea_worker
+                ),
+                schema=BaseSchema,
+                chunksize=self.chunk_size // 20,
+                maxchunks=None if not (self.debug) else 20,
+            )
+
+            output = futures_run(
+                samples,
+                treename=config["treename"],
+                processor_instance=processorClass
+            )
+        
+        elif is_parquet:
+            # New Parquet reading logic
+            print("Processing Parquet files...")
+            output = processor.dict_accumulator({})
+            
+            for dataset_name, file_list in samples.items():
+                for infile in file_list:
+                    print(f"Reading {infile}...")
+                    
+                    # Read parquet file
+                    events = ak.from_parquet(infile)
+                    
+                    # Add metadata (required by Coffea processors)
+                    events.metadata = {
+                        "dataset": dataset_name,
+                        "filename": infile,
+                        "entrystart": 0,
+                        "entrystop": len(events),
+                        "is_parquet": True  # Flag to indicate parquet format
+                    }
+                    
+                    # Process with the same processor
+                    result = processorClass.process(events)
+                    
+                    # Accumulate results
+                    if not output:
+                        output = result
+                    else:
+                        # Merge output_location lists
+                        if "output_location" in result:
+                            if "output_location" in output:
+                                output["output_location"].extend(result["output_location"])
+                            else:
+                                output["output_location"] = result["output_location"]
+                        
+                        # Merge histograms
+                        for key in result:
+                            if key != "output_location":
+                                if key in output:
+                                    output[key] += result[key]
+                                else:
+                                    output[key] = result[key]
+        else:
+            raise ValueError(f"Unsupported file format: {first_file}. Only .root and .parquet are supported.")
 
         # saving histograms from coffea
         histograms = []

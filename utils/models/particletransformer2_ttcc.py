@@ -251,59 +251,6 @@ class ParticleTransformer2_ttcc(Classifier_base):
 
         return (discs, truths, vetos, labels, xlabels, ylabels)
 
-#    def calculate_roc_list(self, predictions, truth):
-#        if np.abs(np.mean(np.sum(predictions, axis=-1)) - 1) > 1e-3:
-#            predictions = softmax(predictions, axis=-1)
-#
-#        ttbb_index = list(self.classes).index('ttbb')
-#        ttb_index = list(self.classes).index('ttb')
-#        ttcc_index = list(self.classes).index('ttcc')
-#        ttc_index = list(self.classes).index('ttc')
-#        ttother_index = list(self.classes).index('ttother')
-#        
-#        ttbb_events = (truth == ttbb_index)
-#        ttb_events = (truth == ttb_index)
-#        ttcc_events = (truth == ttcc_index)
-#        ttc_events = (truth == ttc_index)
-#        ttother_events = (truth == ttother_index)
-#
-#        ttbb_pred = predictions[:, ttbb_index]
-#        ttb_pred = predictions[:, ttb_index]
-#        ttcc_pred = predictions[:, ttcc_index]
-#        ttc_pred = predictions[:, ttc_index]
-#        ttother_pred = predictions[:, ttother_index]
-#
-#        # Key discriminators
-#        ttcc_vs_ttbb = np.where((ttcc_pred + ttbb_pred) > 0, ttcc_pred / (ttcc_pred + ttbb_pred), -1)
-#        ttbb_vs_ttb = np.where((ttbb_pred + ttb_pred) > 0, ttbb_pred / (ttbb_pred + ttb_pred), -1)
-#        ttcc_vs_ttc = np.where((ttcc_pred + ttc_pred) > 0, ttcc_pred / (ttcc_pred + ttc_pred), -1)
-#        
-#        ttbb_vs_all = np.where(predictions.sum(axis=1) > 0, ttbb_pred / predictions.sum(axis=1), -1)
-#        ttcc_vs_all = np.where(predictions.sum(axis=1) > 0, ttcc_pred / predictions.sum(axis=1), -1)
-#
-#        no_veto = np.ones(truth.shape, dtype=bool)
-#
-#        labels = ["ttcc_vs_ttbb", "ttbb_vs_ttb", "ttcc_vs_ttc", "ttbb_vs_all", "ttcc_vs_all"]
-#        discs = [ttcc_vs_ttbb, ttbb_vs_ttb, ttcc_vs_ttc, ttbb_vs_all, ttcc_vs_all]
-#        truths = [ttcc_events, ttbb_events, ttcc_events, ttbb_events, ttcc_events]
-#        vetos = [no_veto, no_veto, no_veto, no_veto, no_veto]
-#        xlabels = [
-#            "ttcc-identification",
-#            "ttbb-identification",
-#            "ttcc-identification",
-#            "ttbb-identification",
-#            "ttcc-identification",
-#        ]
-#        ylabels = [
-#            "ttbb-rejection",
-#            "ttb-rejection",
-#            "ttc-rejection",
-#            "all-rejection",
-#            "all-rejection",
-#        ]
-#
-#        return (discs, truths, vetos, labels, xlabels, ylabels)
-
 
 class ParticleTransformer2_ttcc_binary(Classifier_base):
     """
@@ -818,4 +765,3 @@ class ParticleTransformer2_ttcc_3class(Classifier_base):
         ]
 
         return (discs, truths, vetos, labels, xlabels, ylabels)
-

@@ -59,8 +59,13 @@ class PFCandidateAndVertexProcessing(DataPreprocessing_BaseClass):
         )
         truth_arr = truth_arr[data_slice]
 
+        # Preserve is_parquet flag through slicing (awkward arrays lose metadata when sliced)
+        events_sliced = events[data_slice]
+        if hasattr(events, 'metadata') and events.metadata.get('is_parquet', False):
+            events_sliced.metadata = {'is_parquet': True}
+        
         global_arr = structured_custom_array_from_tree(
-            events=events[data_slice],
+            events=events_sliced,
             keys=self.global_features,
             custom_keys=[
                 key
@@ -76,7 +81,7 @@ class PFCandidateAndVertexProcessing(DataPreprocessing_BaseClass):
             feature_length=1,
         )
         cpf_arr = structured_custom_array_from_tree(
-            events=events[data_slice],
+            events=events_sliced,
             keys=self.cpf,
             custom_keys=[
                 key
@@ -92,7 +97,7 @@ class PFCandidateAndVertexProcessing(DataPreprocessing_BaseClass):
             feature_length=self.n_cpf,
         )
         npf_arr = structured_custom_array_from_tree(
-            events=events[data_slice],
+            events=events_sliced,
             keys=self.npf,
             custom_keys=[
                 key
@@ -108,7 +113,7 @@ class PFCandidateAndVertexProcessing(DataPreprocessing_BaseClass):
             feature_length=self.n_npf,
         )
         vtx_arr = structured_custom_array_from_tree(
-            events=events[data_slice],
+            events=events_sliced,
             keys=self.vtx,
             custom_keys=[
                 key
@@ -124,7 +129,7 @@ class PFCandidateAndVertexProcessing(DataPreprocessing_BaseClass):
             feature_length=self.n_vtx,
         )
         lt_arr = structured_custom_array_from_tree(
-            events=events[data_slice],
+            events=events_sliced,
             keys=self.lt,
             custom_keys=[
                 key
