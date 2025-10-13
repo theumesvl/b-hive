@@ -21,7 +21,7 @@ treename:
  # "DeepJetNTupler/DeepJetvars"
 
 global_features:
-- "nJet"
+- "n_jet"
 - "n_btagM"
 - "n_btagT"
 - "n_ctagVL"
