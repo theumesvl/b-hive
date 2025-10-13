@@ -78,7 +78,7 @@ class ParticleTransformer2_ttcc(Classifier_base):
     }
     
     global_features = [
-        "nJet",
+        "n_jet",
         "n_btagM",
         "n_btagT",
         "n_ctagVL",
@@ -95,7 +95,7 @@ class ParticleTransformer2_ttcc(Classifier_base):
         "Jet_mass",
     ]
     integer_features = {
-        "global_features": ["nJet", "n_btagT", "n_btagM", "n_ctagVL", "n_ctagL", "n_ctagM", "n_ctagT"],
+        "global_features": ["n_jet", "n_btagT", "n_btagM", "n_ctagVL", "n_ctagL", "n_ctagM", "n_ctagT"],
         "cpf_candidates": ["Jet_tagBin"],
         "npf_candidates": [],
         "vtx_features": [],
@@ -218,35 +218,50 @@ class ParticleTransformer2_ttcc(Classifier_base):
 
         # Key discriminators
         ttcc_vs_ttbb = np.where((ttcc_pred + ttbb_pred) > 0, ttcc_pred / (ttcc_pred + ttbb_pred), -1)
+        ttbb_vs_ttcc = np.where((ttcc_pred + ttbb_pred) > 0, ttbb_pred / (ttcc_pred + ttbb_pred), -1)
+
         ttbb_vs_ttb = np.where((ttbb_pred + ttb_pred) > 0, ttbb_pred / (ttbb_pred + ttb_pred), -1)
         ttcc_vs_ttc = np.where((ttcc_pred + ttc_pred) > 0, ttcc_pred / (ttcc_pred + ttc_pred), -1)
 
         ttbb_vs_all = np.where(predictions.sum(axis=1) > 0, ttbb_pred / predictions.sum(axis=1), -1)
         ttcc_vs_all = np.where(predictions.sum(axis=1) > 0, ttcc_pred / predictions.sum(axis=1), -1)
 
+        ttbb_vs_ttother = np.where((ttbb_pred + ttother_pred) > 0, ttbb_pred / (ttbb_pred + ttother_pred), -1)
+        ttcc_vs_ttother = np.where((ttcc_pred + ttother_pred) > 0, ttcc_pred / (ttcc_pred + ttother_pred), -1)
+
         ttcc_vs_ttbb_veto = (truth != ttb_index) & (truth != ttc_index) & (truth != ttother_index) & (summed_events != 0)
         ttbb_vs_ttb_veto = (truth != ttcc_index) & (truth != ttc_index) & (truth != ttother_index) & (summed_events != 0)
         ttcc_vs_ttc_veto = (truth != ttbb_index) & (truth != ttb_index) & (truth != ttother_index) & (summed_events != 0)
+        ttbb_vs_ttother_veto = (truth != ttcc_index) & (truth != ttb_index) & (truth != ttc_index) & (summed_events != 0)
+        ttcc_vs_ttother_veto = (truth != ttbb_index) & (truth != ttb_index) & (truth != ttc_index) & (summed_events != 0)
         #no_veto = np.ones(b_veto.shape, dtype=bool)
         no_veto = np.ones(truth.shape, dtype=bool)
 
-        labels = ["ttcc_vs_ttbb", "ttbb_vs_ttb", "ttcc_vs_ttc", "ttbb_vs_all", "ttcc_vs_all"]
-        discs = [ttcc_vs_ttbb, ttbb_vs_ttb, ttcc_vs_ttc, ttbb_vs_all, ttcc_vs_all]
-        truths = [ttcc_events, ttbb_events, ttcc_events, ttbb_events, ttcc_events]
-        vetos = [ttcc_vs_ttbb_veto, ttbb_vs_ttb_veto, ttcc_vs_ttc_veto, no_veto, no_veto]
+
+        labels = ["ttcc_vs_ttbb", "ttbb_vs_ttcc", "ttbb_vs_ttb", "ttcc_vs_ttc", "ttbb_vs_all", "ttcc_vs_all", "ttbb_vs_ttother", "ttcc_vs_ttother"]
+        discs = [ttcc_vs_ttbb, ttbb_vs_ttcc, ttbb_vs_ttb, ttcc_vs_ttc, ttbb_vs_all, ttcc_vs_all, ttbb_vs_ttother, ttcc_vs_ttother]
+        truths = [ttcc_events, ttbb_events, ttbb_events, ttcc_events, ttbb_events, ttcc_events, ttbb_events, ttcc_events]
+        vetos = [ttcc_vs_ttbb_veto, ttcc_vs_ttbb_veto, ttbb_vs_ttb_veto, ttcc_vs_ttc_veto, no_veto, no_veto, ttbb_vs_ttother_veto, ttcc_vs_ttother_veto]
         xlabels = [
+            "ttcc-identification",
+            "ttbb-identification",
+            "ttbb-identification",
             "ttcc-identification",
             "ttbb-identification",
             "ttcc-identification",
             "ttbb-identification",
             "ttcc-identification",
         ]
+
         ylabels = [
             "ttbb-rejection",
+            "ttcc-rejection",
             "ttb-rejection",
             "ttc-rejection",
             "all-rejection",
             "all-rejection",
+            "ttother_rejection",
+            "ttother_rejection",
         ]
 
         return (discs, truths, vetos, labels, xlabels, ylabels)
