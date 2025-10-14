@@ -87,7 +87,8 @@ def merge_datasets(
     if use_inverse_class_weight:
         # Inverse class frequency weighting using histogram sums
         #print("Using inverse class frequency weighting...")
-        class_counts = np.array([histograms[c].sum() for c in range(histograms.shape[0])], dtype=np.float64)
+        class_counts = np.array([histograms[c].sum(dtype=np.float64) for c in range(histograms.shape[0])], dtype=np.float64)
+
         # Calculate inverse weights: smallest class / each class
         # This gives weight=1.0 to smallest class, and proportionally less to larger classes
         inv = class_counts.min() / class_counts

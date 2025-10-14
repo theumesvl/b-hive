@@ -180,7 +180,7 @@ class DatasetConstructorTask(DatasetDependency, BaseTask):
             if key == "output_location":
                 file_list += value  # append output location list
             else:
-                histograms.append(value.view())  # append view on hist -> np.array
+                histograms.append(value.view().astype(np.float64)) # append view on hist -> np.array
 
         training_histograms = {
             key: value for key, value in output.items() if not "output_location" in key
@@ -188,7 +188,7 @@ class DatasetConstructorTask(DatasetDependency, BaseTask):
 
         np.save(
             self.output()[f"histogram"].path,
-            np.array(histograms, dtype=np.float32),
+            np.array(histograms, dtype=np.float64),
         )
 
         print("Start merging files")
@@ -201,7 +201,7 @@ class DatasetConstructorTask(DatasetDependency, BaseTask):
             chunk_size=self.chunk_size if not self.debug else self.chunk_size//5,
             workers=self.coffea_worker,
             shuffle=True,
-            histograms=np.array(histograms, dtype=np.float32),
+            histograms=np.array(histograms, dtype=np.float64),
             reference_key=list(config["truths"]).index(config["reference_flavour"]), #reference_key is the histogram index for LZ4 dataset
             bins_pt=config["bins_pt"],
             bins_eta=config["bins_eta"],

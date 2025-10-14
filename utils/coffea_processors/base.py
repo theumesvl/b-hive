@@ -77,7 +77,7 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
         for truth in self.truths:
             if self.use_inverse_class_weight:
                 # will use the class counts for weights
-                self.truth_hists[truth] = hist.Hist.new.Variable([0.0, 1.0], name="count").Int64()
+                self.truth_hists[truth] = hist.Hist.new.Variable([0.0, 1.0], name="count").Double()
             else:
                 self.truth_hists[truth] = (
                     hist.Hist.new.Variable(self.bins_pt, name="pt")
