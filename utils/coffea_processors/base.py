@@ -150,6 +150,14 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
         output = self.accumulator
         output_location_list = []
 
+        result = self.callColumnAccumulator(
+            output, events, proc_flag, filename=events.metadata["filename"]
+        )
+        
+        print(f"DEBUG: callColumnAccumulator returned type: {type(result)}")
+        print(f"DEBUG: callColumnAccumulator returned length: {len(result)}")
+        print(f"DEBUG: callColumnAccumulator result: {result}")
+        
         (
             global_arr,
             cpf_arr,
@@ -158,19 +166,33 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
             lt_arr,
             truth,
             process,
-        ) = self.callColumnAccumulator(
-            output, events, proc_flag, filename=events.metadata["filename"]
-        )
+        ) = result
+        
+        print(f"DEBUG: truth type: {type(truth)}")
+        print(f"DEBUG: truth: {truth}")
+        
+        # Create local histograms for this processing chunk
+        local_hists = {}
+        for truth_label in self.truths:
+            if self.use_inverse_class_weight:
+                local_hists[truth_label] = hist.Hist.new.Variable([0.0, 1.0], name="count").Int64()
+            else:
+                local_hists[truth_label] = (
+                    hist.Hist.new.Variable(self.bins_pt, name="pt")
+                    .Variable(self.bins_eta, name="eta")
+                    .Int64()
+                )
         
         for truth_label in self.truths:
             if self.use_inverse_class_weight:
                 # for class counting, fill 1D histogram with dummy values
                 n_events = truth[truth_label].sum()
-                self.truth_hists[truth_label].fill(
+                print(f"DEBUG: Processing {dataset}, truth_label={truth_label}, n_events={n_events}, total_events_in_chunk={len(truth[truth_label])}")
+                local_hists[truth_label].fill(
                     np.zeros(n_events, dtype=self.precision),
                 )
             else:
-                self.truth_hists[truth_label].fill(
+                local_hists[truth_label].fill(
                     global_arr[self.pt_key][truth[truth_label]],
                     global_arr[self.eta_key][truth[truth_label]],
                 )
@@ -187,8 +209,8 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
         
         ret = {}
         ret["output_location"] = output_location_list
-        for label, hist in self.truth_hists.items():
-            ret[label] = hist
+        for label, h in local_hists.items():
+            ret[label] = h
         return ret
 
     def postprocess(self, accumulator):
