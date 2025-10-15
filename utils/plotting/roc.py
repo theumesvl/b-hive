@@ -12,7 +12,8 @@ from matplotlib.cm import get_cmap
 
 color_set_name = "Dark2"
 cmap = get_cmap(color_set_name)  # type: matplotlib.colors.ListedColormap
-color_set_list = cmap.colors  # type: list
+#color_set_list = cmap.colors  # type: list
+color_set_list = list(cmap.colors) 
 
 plt.style.use(hep.cms.style.CMS)
 
@@ -207,7 +208,7 @@ def plot_roc(
     plt.grid(which="major", alpha=0.95, color="black")
     title = ""
     if dataset_label:
-        title += f"{dataset_label} jets \n"
+        title += f"{dataset_label} \n"
     if pt_min and pt_max:
         title += f"{pt_text}, {eta_text}"
     plt.legend(

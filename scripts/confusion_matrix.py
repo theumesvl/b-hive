@@ -3,8 +3,10 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
 from sklearn import metrics
 
-truth_file = "/eos/home-j/jusong/analysis/b-hive/output/InferenceTask/ttcc/Oct25v2_train/Oct25v2_test/Oct25v2_trainv1/ParticleTransformer2_ttcc/epochs_50/nominal/test_attack_nominal/truth.npy"
-pred_file = "/eos/home-j/jusong/analysis/b-hive/output/InferenceTask/ttcc/Oct25v2_train/Oct25v2_test/Oct25v2_trainv1/ParticleTransformer2_ttcc/epochs_50/nominal/test_attack_nominal/prediction.npy"
+path = "/eos/home-j/jusong/analysis/b-hive/output/InferenceTask/ttcc/Oct25v2_train/Oct25v2_test/Octv2_trainv2/ParticleTransformer2_ttcc/epochs_30/nominal/test_attack_nominal/"
+truth_file = path+"truth.npy"
+pred_file = path+"prediction.npy"
+
 
 truth = np.load(truth_file)
 plt.hist(truth, bins=[0,1,2,3,4,5])

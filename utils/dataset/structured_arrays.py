@@ -16,8 +16,6 @@ def join_struct_arrays(*arrs):
 
 def get_nested_field(events, key, is_parquet, feature_length):
     """Helper function to get field from events, handling parquet nested structure"""
-    print(f"DEBUG: key={key}, is_parquet={is_parquet}, feature_length={feature_length}")
-    print(f"  Conditions: is_parquet={is_parquet}, feature_length>1={feature_length > 1}, '_' in key={'_' in key}")
     
     if is_parquet and feature_length > 1 and "_" in key:
         # For parquet: Jet_pt -> events["Jet"]["pt"]
@@ -50,13 +48,11 @@ def structured_array_from_tree(
     
     # Check if this is a parquet file (via metadata)
     is_parquet = hasattr(events, 'metadata') and events.metadata.get('is_parquet', False)
-    print(f"structured_array_from_tree: is_parquet={is_parquet}, has_metadata={hasattr(events, 'metadata')}")
-    if hasattr(events, 'metadata'):
-        print(f"  metadata={events.metadata}")
     
     #print('KEYS:', keys)
     for key, dtype_name in zip(keys, dtype.fields):
         if feature_length == 1:
+            print(f"  -> feature_length ==1: {key}")
             arr[key] = np.array(events[key], dtype=[(dtype_name, precision)])
         else:
             field_data = get_nested_field(events, key, is_parquet, feature_length)
@@ -92,9 +88,6 @@ def structured_custom_array_from_tree(
 
     # Check if this is a parquet file (via metadata)
     is_parquet = hasattr(events, 'metadata') and events.metadata.get('is_parquet', False)
-    print(f"structured_custom_array_from_tree: is_parquet={is_parquet}, has_metadata={hasattr(events, 'metadata')}")
-    if hasattr(events, 'metadata'):
-        print(f"  metadata={events.metadata}")
     
     # Build eval_dict for custom formulas
     if is_parquet:

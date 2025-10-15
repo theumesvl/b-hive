@@ -154,10 +154,6 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
             output, events, proc_flag, filename=events.metadata["filename"]
         )
         
-        print(f"DEBUG: callColumnAccumulator returned type: {type(result)}")
-        print(f"DEBUG: callColumnAccumulator returned length: {len(result)}")
-        print(f"DEBUG: callColumnAccumulator result: {result}")
-        
         (
             global_arr,
             cpf_arr,
@@ -167,9 +163,6 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
             truth,
             process,
         ) = result
-        
-        print(f"DEBUG: truth type: {type(truth)}")
-        print(f"DEBUG: truth: {truth}")
         
         # Create local histograms for this processing chunk
         local_hists = {}
@@ -187,7 +180,7 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
             if self.use_inverse_class_weight:
                 # for class counting, fill 1D histogram with dummy values
                 n_events = truth[truth_label].sum()
-                print(f"DEBUG: Processing {dataset}, truth_label={truth_label}, n_events={n_events}, total_events_in_chunk={len(truth[truth_label])}")
+                #print(f"DEBUG: Processing {dataset}, truth_label={truth_label}, n_events={n_events}, total_events_in_chunk={len(truth[truth_label])}")
                 local_hists[truth_label].fill(
                     np.zeros(n_events, dtype=self.precision),
                 )

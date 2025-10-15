@@ -22,34 +22,25 @@ treename:
 
 global_features:
 - "n_jet"
+- "n_btagVL"
+- "n_btagL"
 - "n_btagM"
 - "n_btagT"
+- "n_ctagVVL"
 - "n_ctagVL"
 - "n_ctagL"
 - "n_ctagM"
 - "n_ctagT"
-- "mll"
 - "is_CR1_4j"
 - "is_CR2_4j"
 - "is_CR3_4j"
 - "is_SRl_4j"
 - "is_SRt_4j"
-#- "jet_pt"
-#- "jet_eta"
-#- "jet_phi"
-#- "jet_energy"
-#- "jet_pt_corr"
-#- "jet_mass"
-#- "jet_mass_corr"
-#- "jet_chf"
-#- "jet_nhf"
-#- "jet_phf"
-#- "jet_elf"
-#- "jet_muf"
-#- "jet_ncand"
+
 cpf_candidates:
 - "Jet_tagBin"
 - "Jet_btagPNetBvC"
+- "Jet_btagPNetBpC"
 - "Jet_btagPNetC"
 - "Jet_pt"
 - "Jet_eta"
@@ -75,8 +66,6 @@ truths:
 
 reference_flavour:
  "is_ttbb"
-
-use_inverse_class_weight: true
 
 selections:
 - "is_CR1_4j"
