@@ -147,7 +147,7 @@ class InferenceTask(
         if len(chunk_sizes) == 1:
             chunk_sizes = np.ones(len(files))*chunk_sizes
         
-        expected_test_number_of_batches = expected_batches(chunk_sizes, self.batch_size)
+        expected_test_number_of_batches, N_inf_events = expected_batches(chunk_sizes, self.batch_size, self.n_threads, mode='test')
         test_data = datasetClass(
             files=files,
             model=model,

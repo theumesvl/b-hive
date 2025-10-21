@@ -240,18 +240,21 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
                 dtype = np.float32,#self.training_precision,
                 device = self.device,
             )
-            expected_train_number_of_batches = expected_batches(chunk_sizes[:n_train],   self.batch_size)
-            expected_val_number_of_batches   = expected_batches(chunk_sizes[-n_val:], self.batch_size)
+            expected_train_number_of_batches, N_train_events = expected_batches(chunk_sizes[:n_train], self.batch_size, self.n_threads, mode='training')
+            expected_val_number_of_batches, N_val_events     = expected_batches(chunk_sizes[-n_val:],  self.batch_size, self.n_threads, mode='validation')
             rw = ""
     
         else:
             print("Using weighted sampling")
             class_weights = None
-            expected_train_number_of_batches = expected_batches(sum_weights[:n_train], self.batch_size)
-            expected_val_number_of_batches   = expected_batches(sum_weights[-n_val:],  self.batch_size)
+            expected_train_number_of_batches, N_train_events = expected_batches(sum_weights[:n_train], self.batch_size, self.n_threads, mode='training')
+            expected_val_number_of_batches, N_val_events     = expected_batches(sum_weights[-n_val:],  self.batch_size, self.n_threads, mode='validation')
             rw = ' (after reweighing)'
-        print(f'Estimated number of jets/events in training{rw}:   {expected_train_number_of_batches*self.batch_size:,}')
-        print(f'Estimated number of jets/events in validation{rw}: {expected_val_number_of_batches*self.batch_size:,}')
+        print(f'Estimated number of jets/events in training{rw}:   {N_train_events:,}')
+        print(f'Estimated number of jets/events in validation{rw}: {N_val_events:,}')
+
+        if expected_train_number_of_batches == 0:
+            raise ValueError("The training DataLoader is empty. Ensure that you have enough data to form at least one batch.")
         
         # Pick attack
         print(rf"Applying {self.attack} attack (attack_magnitude={self.attack_magnitude}, n_iterations={self.attack_iterations}, attack_uncertainty={self.attack_uncertainty}).")
@@ -298,8 +301,6 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             batch_size=self.batch_size,
             out_precision=self.training_precision,
         )
-
-        #print(f"Memory usage after training dataset loading: {check_memory_usage():.4f} GiB")
         
         validation_data = datasetClass(
             files=validation_files,
@@ -313,36 +314,25 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
             out_precision=self.training_precision,
         )
 
-        #print(f"Memory usage after validation dataset loading: {check_memory_usage():.4f} GiB")
-
         # Define the corresponding dataloaders
         training_dataloader = DataLoader(
             training_data,
-            batch_size = None,#self.batch_size if config["dataset"] not in {"LZ4FP16Dataset", "LZ4Dataset", "LZ4PAIReDDataset"} else None,
+            batch_size = None,
             drop_last=False,
             pin_memory=True,  # Pin Memory for faster CPU/GPU memory load
             num_workers=self.n_threads,
         )
-
-        if expected_train_number_of_batches == 0:
-            raise ValueError("The training DataLoader is empty. Ensure that you have enough data to form at least one batch.")
-
         # Expected number of iterations
         training_dataloader.nits_expected = expected_train_number_of_batches
 
-        #print(f"Memory usage after initializing training dataloader: {check_memory_usage():.4f} GiB")
-
         validation_dataloader = DataLoader(
             validation_data,
-            batch_size = None,#self.batch_size if config["dataset"] not in {"LZ4FP16Dataset", "LZ4Dataset", "LZ4PAIReDDataset"} else None,
+            batch_size = None,
             drop_last=False,
             pin_memory=True,
             num_workers=self.n_threads,
         )
-        
         validation_dataloader.nits_expected = expected_val_number_of_batches
-
-        #print(f"Memory usage after initializing validation dataloader: {check_memory_usage():.4f} GiB")
         
         # The learning rate scheduler
         scheduler, batch_lr =  SchedulerLoader(
@@ -369,7 +359,6 @@ class TrainingTask(AttackDependency, TrainingDependency, DatasetDependency, Base
                 scheduler=scheduler,
                 epoch=self.resume_epoch,
             )
-            #print(f"Memory usage after loading model, optimizer, and scheduler: {check_memory_usage():.4f} GiB")
         else:
             ran_epochs = 0
             train_metrics = {"loss": [], "acc": []}
