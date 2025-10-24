@@ -39,13 +39,14 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
         pt_key: str = None,
         eta_key: str = None,
         selections: List[str] = None,
-        use_inverse_class_weight: bool = False,
     ):
         self._accumulator = processor.dict_accumulator({})
-        self._bins_pt_provided = bins_pt is not None
-        self._bins_eta_provided = bins_eta is not None
-        self.bins_pt = bins_pt if bins_pt is not None else [0.0, 1.0] # allow configs without bins
-        self.bins_eta = bins_eta if bins_eta is not None else [0.0, 1.0]
+#        self._bins_pt_provided = bins_pt is not None
+#        self._bins_eta_provided = bins_eta is not None
+#        self.bins_pt = bins_pt if bins_pt is not None else [0.0, 1.0] # allow configs without bins
+#        self.bins_eta = bins_eta if bins_eta is not None else [0.0, 1.0]
+        self.bins_pt = bins_pt  # allow configs without bins
+        self.bins_eta = bins_eta 
         self.output_dir = output_directory
         self.precision = np.dtype(precision).type
         self.prefix = prefix
@@ -68,19 +69,14 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
         self.pt_key = pt_key
         self.eta_key = eta_key
         self.selections = selections
-        self.use_inverse_class_weight = use_inverse_class_weight
         if self.processes is None:
             self.processes = []
 
         self.truth_hists = {}
 
         for truth in self.truths:
-            if self.use_inverse_class_weight:
-                # will use the class counts for weights
-                self.truth_hists[truth] = hist.Hist.new.Variable([0.0, 1.0], name="count").Double()
-            else:
-                self.truth_hists[truth] = (
-                    hist.Hist.new.Variable(self.bins_pt, name="pt")
+            self.truth_hists[truth] = (
+                hist.Hist.new.Variable(self.bins_pt, name="pt")
                     .Variable(self.bins_eta, name="eta")
                     .Int64()
                 )
@@ -167,28 +163,17 @@ class DataPreprocessing_BaseClass(processor.ProcessorABC):
         # Create local histograms for this processing chunk
         local_hists = {}
         for truth_label in self.truths:
-            if self.use_inverse_class_weight:
-                local_hists[truth_label] = hist.Hist.new.Variable([0.0, 1.0], name="count").Int64()
-            else:
-                local_hists[truth_label] = (
-                    hist.Hist.new.Variable(self.bins_pt, name="pt")
-                    .Variable(self.bins_eta, name="eta")
-                    .Int64()
-                )
+            local_hists[truth_label] = (
+                hist.Hist.new.Variable(self.bins_pt, name="pt")
+                .Variable(self.bins_eta, name="eta")
+                .Int64()
+            )
         
         for truth_label in self.truths:
-            if self.use_inverse_class_weight:
-                # for class counting, fill 1D histogram with dummy values
-                n_events = truth[truth_label].sum()
-                #print(f"DEBUG: Processing {dataset}, truth_label={truth_label}, n_events={n_events}, total_events_in_chunk={len(truth[truth_label])}")
-                local_hists[truth_label].fill(
-                    np.zeros(n_events, dtype=self.precision),
-                )
-            else:
-                local_hists[truth_label].fill(
-                    global_arr[self.pt_key][truth[truth_label]],
-                    global_arr[self.eta_key][truth[truth_label]],
-                )
+            local_hists[truth_label].fill(
+                global_arr[self.pt_key][truth[truth_label]],
+                global_arr[self.eta_key][truth[truth_label]],
+            )
 
         output_location = os.path.join(
             self.output_dir, f"{self.prefix}{dataset}_{filename}_{start}_{stop}.npz"

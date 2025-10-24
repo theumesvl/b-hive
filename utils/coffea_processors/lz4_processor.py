@@ -35,7 +35,17 @@ class LZ4Processing(PFCandidateAndVertexProcessing):
         # Process individual arrays, replacing missing arrays with placeholders
         global_part = self.process_array(global_arr, n_jet).reshape(n_jet, -1)
         cpf_part = np.swapaxes(self.process_array(cpf_arr, n_jet, n_Cand=self.n_cpf), 1, 2).reshape(n_jet, -1)
-        npf_part = np.swapaxes(self.process_array(npf_arr, n_jet, n_Cand=self.n_npf), 1, 2).reshape(n_jet, -1)
+        #npf_part = np.swapaxes(self.process_array(npf_arr, n_jet, n_Cand=self.n_npf), 1, 2).reshape(n_jet, -1)
+        
+        # Handle NPF (MET) - if n_npf=1, no swapaxes needed
+        npf_processed = self.process_array(npf_arr, n_jet, n_Cand=self.n_npf)
+        if self.n_npf == 1:
+            # MET case: 2D array, no swapaxes needed
+            npf_part = npf_processed.reshape(n_jet, -1)
+        else:
+            # Regular NPF case: 3D array, swapaxes needed
+            npf_part = np.swapaxes(npf_processed, 1, 2).reshape(n_jet, -1)
+        
         vtx_part = np.swapaxes(self.process_array(vtx_arr, n_jet, n_Cand=self.n_vtx), 1, 2).reshape(n_jet, -1)
         lt_part  = np.swapaxes(self.process_array(lt_arr,  n_jet, n_Cand=self.n_lt),  1, 2).reshape(n_jet, -1)
         process_part = process.astype(self.precision).reshape(n_jet, -1)

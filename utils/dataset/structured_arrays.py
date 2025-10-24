@@ -17,7 +17,7 @@ def join_struct_arrays(*arrs):
 def get_nested_field(events, key, is_parquet, feature_length):
     """Helper function to get field from events, handling parquet nested structure"""
     
-    if is_parquet and feature_length > 1 and "_" in key:
+    if is_parquet and (feature_length > 1 or key.startswith("MET_")) and "_" in key:
         # For parquet: Jet_pt -> events["Jet"]["pt"]
         parts = key.split("_", 1)  # Split only on first underscore
         print(f"  -> Nested: events['{parts[0]}']['{parts[1]}']")
@@ -51,19 +51,25 @@ def structured_array_from_tree(
     
     #print('KEYS:', keys)
     for key, dtype_name in zip(keys, dtype.fields):
-        if feature_length == 1:
+        if feature_length == 1 and not key.startswith("MET_"):
             print(f"  -> feature_length ==1: {key}")
             arr[key] = np.array(events[key], dtype=[(dtype_name, precision)])
         else:
             field_data = get_nested_field(events, key, is_parquet, feature_length)
-            arr[key] = ak.to_numpy(
-                ak.values_astype(
-                    ak.fill_none(
-                        ak.pad_none(field_data, feature_length)[:, :feature_length], 0
-                    ),
-                    precision,
-                )
-            )
+            if key.startswith("MET_"):
+                # MET is single value per event, no padding needed
+                arr[key] = np.array(field_data, dtype=[(dtype_name, precision)])
+            else:
+                # Multi-value fields need padding
+	            arr[key] = ak.to_numpy(
+	                ak.values_astype(
+	                    ak.fill_none(
+	                        ak.pad_none(field_data, feature_length)[:, :feature_length], 0
+	                    ),
+	                    np.float32,
+	                )
+	            ).astype(precision)
+
     return arr
 
 
@@ -119,18 +125,26 @@ def structured_custom_array_from_tree(
     )
     
     for key, dtype_name in zip(keys, dtype.fields):
-        if feature_length == 1:
+        #if feature_length == 1:
+        if feature_length == 1 and not key.startswith("MET_"):
             arr[key] = np.array(events[key], dtype=[(dtype_name, precision)])
         else:
+            # Multi-value fields or MET fields (nested)
             field_data = get_nested_field(events, key, is_parquet, feature_length)
-            arr[key] = ak.to_numpy(
-                ak.values_astype(
-                    ak.fill_none(
-                        ak.pad_none(field_data, feature_length)[:, :feature_length], 0
-                    ),
-                    np.float32,
-                )
-            ).astype(precision)
+            
+            if key.startswith("MET_"):
+                # MET is single value per event, no padding needed
+                arr[key] = np.array(field_data, dtype=[(dtype_name, precision)])
+            else:
+                # Multi-value fields need padding
+	            arr[key] = ak.to_numpy(
+	                ak.values_astype(
+	                    ak.fill_none(
+	                        ak.pad_none(field_data, feature_length)[:, :feature_length], 0
+	                    ),
+	                    np.float32,
+	                )
+	            ).astype(precision)
 
     dtype = np.dtype(
         [

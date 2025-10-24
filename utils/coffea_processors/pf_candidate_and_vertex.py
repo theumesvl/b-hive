@@ -12,9 +12,8 @@ from utils.dataset.structured_arrays import (
 class PFCandidateAndVertexProcessing(DataPreprocessing_BaseClass):
     def callColumnAccumulator(self, output, events, flag, **kwargs):
 
-        pt_and_eta_slicing = self._bins_pt_provided and self._bins_eta_provided
-        # slicing based on p_T and eta
-        if pt_and_eta_slicing:
+        # Only apply pt/eta slicing if using actual jet_pt and jet_eta
+        if self.pt_key == "jet_pt" and self.eta_key == "jet_eta":
             pt_slice = np.logical_and(
                 ak.to_numpy(ak.flatten(events[self.pt_key], axis=0)) >= min(self.bins_pt),
                 ak.to_numpy(ak.flatten(events[self.pt_key], axis=0)) < max(self.bins_pt),
@@ -24,6 +23,7 @@ class PFCandidateAndVertexProcessing(DataPreprocessing_BaseClass):
                 ak.to_numpy(ak.flatten(events[self.eta_key], axis=0)) < max(self.bins_eta),
             )
         else:
+            # No slicing for other keys (e.g., n_btagM)
             pt_slice = np.ones(len(events), dtype=bool)
             eta_slice = np.ones(len(events), dtype=bool)
     
@@ -166,7 +166,8 @@ class PFCandidateAndVertexProcessing(DataPreprocessing_BaseClass):
             npf_mask = reduce(
                 np.logical_and,
                 [
-                    ~np.any(np.isnan(npf_arr[key]), axis=1)
+                    ~np.any(np.isnan(npf_arr[key]), axis=1) if npf_arr[key].ndim > 1
+                    else ~np.isnan(npf_arr[key])  # For 1D arrays (like MET)
                     for key in npf_arr.dtype.names
                 ],
             )

@@ -1,8 +1,12 @@
 bins_pt:
- null  
+- 0
+- 10
+- 20
 
 bins_eta:
- null
+- 0
+- 10
+- 20
 
 pt_key:
   "n_btagM"
@@ -13,8 +17,8 @@ eta_key:
 processor: 
  "LZ4TTCCProcessor"
 
-use_inverse_class_weight:
- True
+#use_inverse_class_weight:
+# True
 
 treename:
   "Events"
@@ -31,6 +35,7 @@ global_features:
 - "n_ctagL"
 - "n_ctagM"
 - "n_ctagT"
+- "Jet_HT"
 - "is_CR1_4j"
 - "is_CR2_4j"
 - "is_CR3_4j"
@@ -38,24 +43,38 @@ global_features:
 - "is_SRt_4j"
 
 cpf_candidates:
-- "Jet_tagBin"
-- "Jet_btagPNetBvC"
-- "Jet_btagPNetBpC"
-- "Jet_btagPNetC"
+- "Jet_is_L0"
+- "Jet_is_C0"
+- "Jet_is_C1"
+- "Jet_is_C2"
+- "Jet_is_C3"
+- "Jet_is_C4"
+- "Jet_is_B0"
+- "Jet_is_B1"
+- "Jet_is_B2"
+- "Jet_is_B3"
+- "Jet_is_B4"
 - "Jet_pt"
 - "Jet_eta"
 - "Jet_phi"
 - "Jet_mass"
 
+npf_candidates:
+- "MET_pt"
+- "MET_phi"
+
 vtx_features:
+- "Lepton_charge"
+- "Lepton_is_mu"
+- "Lepton_is_el"
 - "Lepton_pt"
 - "Lepton_eta"
 - "Lepton_phi"
 - "Lepton_mass"
 
 n_cpf_candidates: 6
+n_npf_candidates: 1
 n_vtx_candidates: 2
-n_npf_candidates: 0
 
 truths:
 - "is_ttbb"
@@ -68,9 +87,13 @@ reference_flavour:
  "is_ttbb"
 
 selections:
-- "is_CR1_4j"
-- "is_CR2_4j"
-- "is_CR3_4j"
-- "is_SRl_4j"
-- "is_SRt_4j"
+# or:
+#  - "is_CR1_4j"
+#  - "is_CR2_4j"
+#  - "is_CR3_4j"
+#  - "is_SRl_4j"
+#  - "is_SRt_4j"
+ and:
+  - "n_jet>3"
+  - "n_btagVL>1"
 
