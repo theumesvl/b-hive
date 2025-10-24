@@ -22,7 +22,6 @@ from utils.models.particletransformer2 import (
     trunc_normal_,
 )
 
-
 def build_p4_mass(tensor, is_met=False):
     """Build 4-vector from pt, eta, phi, mass instead of energy"""
     out = torch.zeros(tensor.shape[0], tensor.shape[1], 4, device=tensor.device)
@@ -45,6 +44,19 @@ def build_p4_mass(tensor, is_met=False):
         out[:, :, 3] = torch.sqrt(p_squared + tensor[:, :, 3]**2)  # Get E from mass
 
     return out
+
+class DenseClassifier(nn.Module):
+    def __init__(self, dim=128, **kwargs):
+        super(DenseClassifier, self).__init__(**kwargs)
+
+        self.LinLayer1 = InputConv(dim, dim)
+        self.LinLayer2 = InputConv(dim, dim)
+
+    def forward(self, x):
+        x = self.LinLayer1(x, x, skip=True)
+        x = self.LinLayer2(x, x, skip=True)
+
+        return x
 
 class InputProcess_ttcc(nn.Module):
     """
@@ -76,7 +88,6 @@ class InputProcess_ttcc(nn.Module):
         out = torch.cat((cpf, npf, vtx), dim=1)
 
         return out
-
 
 class ParticleTransformer2_ttcc(Classifier_base):
     """
@@ -173,6 +184,8 @@ class ParticleTransformer2_ttcc(Classifier_base):
                 d_model=embed_dim, nhead=num_head, dropout=0.1, swiglu=swiglu,
             )
 
+        self.Dense = DenseClassifier(embed_dim+global_dim)
+
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim), requires_grad=True)
         trunc_normal_(self.cls_token, std=0.02)
     
@@ -217,7 +230,10 @@ class ParticleTransformer2_ttcc(Classifier_base):
         
         x = torch.squeeze(cls_tokens, dim=1)
         x = torch.cat((x,global_features), dim=1)
-        output = self.Linear(self.cls_norm(x))
+
+        x = self.Dense(x)
+
+        output = self.Linear(x)
         if self.for_inference:
             output = torch.softmax(output, dim=1)
 
@@ -387,6 +403,7 @@ class ParticleTransformer2_ttcc_binary(Classifier_base):
                 d_model=embed_dim, nhead=num_head, dropout=0.1, swiglu=swiglu,
             )
 
+
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim), requires_grad=True)
         trunc_normal_(self.cls_token, std=0.02)
     
@@ -427,7 +444,7 @@ class ParticleTransformer2_ttcc_binary(Classifier_base):
         
         x = torch.squeeze(cls_tokens, dim=1)
         x = torch.cat((x,global_features), dim=1)
-        output = self.Linear(self.cls_norm(x))
+        x = self.cls_norm(x)
         if self.for_inference:
             output = torch.softmax(output, dim=1)
 
