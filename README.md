@@ -22,7 +22,7 @@ Clone the repository via gitlab (either ssh or http):
 
 ```bash
 # clone the repository
-git clone ssh://git@gitlab.cern.ch:7999/cms-btv/b-hive.git
+git clone git@github.com:Chirayu18/b-hive.git
 cd b-hive
 ```
 
