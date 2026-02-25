@@ -208,6 +208,7 @@ class DatasetConstructorTask(DatasetDependency, BaseTask):
             eta_key=config.get("eta_key", "jet_eta"),
             global_features=config.get("global_features", []),
             precision=config.get("data_precision", 'float32'),
+            reweighting_mode=config.get("reweighting_mode", "histogram"),
         )
         '''
         if "LZ4" not in config.get("processor", "PFCandidateAndVertexProcessing"):

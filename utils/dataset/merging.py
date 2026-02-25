@@ -55,23 +55,24 @@ def check_memory_usage():
 
 
 def merge_datasets(
-    files, 
-    path, 
-    label="", 
-    chunk_size=100000, 
+    files,
+    path,
+    label="",
+    chunk_size=100000,
     verbose=0,
     workers=8,
-    processor = "", 
-    shuffle=True, 
-    debug=False, 
-    histograms = None, 
-    reference_key= None, 
-    bins_pt=None, 
+    processor = "",
+    shuffle=True,
+    debug=False,
+    histograms = None,
+    reference_key= None,
+    bins_pt=None,
     bins_eta=None,
     pt_key=None,
     eta_key=None,
     global_features=None,
     precision='float32',
+    reweighting_mode='histogram',
 ):
     if shuffle:
         np.random.shuffle(files)
@@ -79,27 +80,40 @@ def merge_datasets(
     file_list = []
     dtype = np.dtype(precision).type
 
-    weights_list = []
     weights_list_sum = []
     chuck_size_list = []
-        
-    reference_histogram = histograms[reference_key] #reference_key is an index in the context of LZ4 datasets
-    reference_histogram = reference_histogram / np.max(reference_histogram)
-    for c in range(histograms.shape[0]):
-        other_histogram = histograms[c]
-        max_hist = np.max(other_histogram)
-        if max_hist != 0:
-            other_histogram = other_histogram / max_hist
+
+    if reweighting_mode == 'class':
+        # Inverse-frequency class reweighting: one weight per class
+        abundance = np.array([histograms[c].sum() for c in range(histograms.shape[0])])
+        total = abundance.sum()
         with np.errstate(divide="ignore", invalid="ignore"):
-            weights = np.where(other_histogram > 0, reference_histogram / other_histogram, -10)
-            weights = weights / np.max(weights)
-        
-        weights[weights < 0] = 1
-        weights[np.isnan(weights)] = 1
-        
-        weights_list.append(weights)
-        
-    weights_list = np.array(weights_list)
+            class_weights = np.where(abundance > 0, total / abundance, 0.0)
+        class_weights = class_weights / class_weights.max()
+        print(f"Class reweighting — abundances: {abundance.astype(int)}")
+        print(f"Class reweighting — weights:    {[round(w, 6) for w in class_weights]}")
+        weights_list = None  # not used in class mode
+    else:
+        # Histogram reweighting: 2D (pT, eta) per class
+        weights_list = []
+        reference_histogram = histograms[reference_key]
+        reference_histogram = reference_histogram / np.max(reference_histogram)
+        for c in range(histograms.shape[0]):
+            other_histogram = histograms[c]
+            max_hist = np.max(other_histogram)
+            if max_hist != 0:
+                other_histogram = other_histogram / max_hist
+            with np.errstate(divide="ignore", invalid="ignore"):
+                weights = np.where(other_histogram > 0, reference_histogram / other_histogram, -10)
+                weights = weights / np.max(weights)
+
+            weights[weights < 0] = 1
+            weights[np.isnan(weights)] = 1
+
+            weights_list.append(weights)
+
+        weights_list = np.array(weights_list)
+        class_weights = None  # not used in histogram mode
 
     weight_filename = os.path.join(path, "weights.json")
 
@@ -164,9 +178,12 @@ def merge_datasets(
 
                     flavour_idx = np.argmax(chunk_to_process[:,-histograms.shape[0]:], axis=-1)
 
-                    pt_coordinate  = np.digitize(chunk_to_process[:, pt_key_index],  bins_pt)  - 1
-                    eta_coordinate = np.digitize(chunk_to_process[:, eta_key_index], bins_eta) - 1
-                    w = weights_list[flavour_idx, pt_coordinate, eta_coordinate].astype(dtype)
+                    if reweighting_mode == 'class':
+                        w = class_weights[flavour_idx].astype(dtype)
+                    else:
+                        pt_coordinate  = np.digitize(chunk_to_process[:, pt_key_index],  bins_pt)  - 1
+                        eta_coordinate = np.digitize(chunk_to_process[:, eta_key_index], bins_eta) - 1
+                        w = weights_list[flavour_idx, pt_coordinate, eta_coordinate].astype(dtype)
                     
                     chunk_to_process = np.concatenate((chunk_to_process,w.reshape(-1,1)), axis=1)
                     size = np.array(chunk_to_process.shape).astype(dtype)
@@ -233,12 +250,15 @@ def merge_datasets(
                         delta=chunk_size - n_chunk,
                         shuffle=True,
                     )
-                    pt_coordinate  = np.digitize(merged['global_features'][pt_key],  bins_pt)  - 1
-                    eta_coordinate = np.digitize(merged['global_features'][eta_key], bins_eta) - 1
                     flavour_idx = np.lib.recfunctions.apply_along_fields(
                         np.argmax, merged["truth"]
                     )
-                    w = weights_list[flavour_idx, pt_coordinate, eta_coordinate].astype(dtype)
+                    if reweighting_mode == 'class':
+                        w = class_weights[flavour_idx].astype(dtype)
+                    else:
+                        pt_coordinate  = np.digitize(merged['global_features'][pt_key],  bins_pt)  - 1
+                        eta_coordinate = np.digitize(merged['global_features'][eta_key], bins_eta) - 1
+                        w = weights_list[flavour_idx, pt_coordinate, eta_coordinate].astype(dtype)
                     merged['weight'] = w
                     weights_list_sum.append(float(w.sum()))
                     chuck_size_list.append(chunk_size)
@@ -260,12 +280,15 @@ def merge_datasets(
                 if verbose:
                     print("Merging remaining arrays")
                 merged, _ = merge_structured_arrays(merge_arrays,shuffle=True)
-                pt_coordinate  = np.digitize(merged['global_features'][pt_key],  bins_pt)  - 1
-                eta_coordinate = np.digitize(merged['global_features'][eta_key], bins_eta) - 1
                 flavour_idx = np.lib.recfunctions.apply_along_fields(
                     np.argmax, merged["truth"]
                 )
-                w = weights_list[flavour_idx, pt_coordinate, eta_coordinate].astype(dtype)
+                if reweighting_mode == 'class':
+                    w = class_weights[flavour_idx].astype(dtype)
+                else:
+                    pt_coordinate  = np.digitize(merged['global_features'][pt_key],  bins_pt)  - 1
+                    eta_coordinate = np.digitize(merged['global_features'][eta_key], bins_eta) - 1
+                    w = weights_list[flavour_idx, pt_coordinate, eta_coordinate].astype(dtype)
                 merged['weight'] = w
                 weights_list_sum.append(float(w.sum()))
                 chuck_size_list.append(len(w))

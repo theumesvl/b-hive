@@ -1,0 +1,85 @@
+# Configuration for HPlusCHToWW signal vs background classification
+# Based on H+c BDT variables from the analysis note
+# Uses parquet files with event-level variables
+
+# Use default process matching (treats all files equally)
+processes:
+- "default"
+
+# Binning for reweighting - wide bins to avoid overflow issues
+bins_pt:
+- 0
+- 50
+- 100
+- 200
+- 500
+- 100000
+
+bins_eta:
+- 0
+- 50
+- 100
+- 200
+- 500
+- 100000
+
+# Keys for pt/eta binning (using event-level variables)
+pt_key: "dilepton_pt"
+eta_key: "dilepton_mass"
+
+# Processor type (supports parquet)
+processor: "LZ4TTCCProcessor"
+
+# Tree name (required but not used for parquet)
+treename: "Events"
+
+# Event-level features for MVA training
+# Based on H+c BDT variables from analysis note (17 variables)
+global_features:
+# Kinematic variables
+- "dilepton_pt"         # pT(ll) - momentum of dilepton system
+- "lepton1_pt"          # pT(l1) - momentum of leading lepton
+- "lepton2_pt"          # pT(l2) - momentum of subleading lepton
+- "cjet_cand_pt"        # pT(c) - momentum of charm jet candidate
+- "met_pt"              # pT(miss) - missing transverse momentum
+# Transverse mass variables
+- "mtl1"                # mT(l1) - transverse mass (leading lepton, MET)
+- "mtl2"                # mT(l2) - transverse mass (subleading lepton, MET)
+- "dilepton_mass"       # m(ll) - mass of dilepton system
+# Delta R variables
+- "delta_R_ll_l1"       # deltaR(ll, l1) - separation between dilepton and leading lepton
+- "delta_R_ll_l2"       # deltaR(ll, l2) - separation between dilepton and subleading lepton
+- "delta_R_ll_c"        # deltaR(ll, c) - separation between dilepton and charm jet
+# Delta phi variables
+- "delta_phi_l1PlusMET_c"  # deltaPhi(l1+MET, c) - separation of l1+MET system and charm jet
+- "delta_phi_l1_MET"    # deltaPhi(l1, MET) - separation of leading lepton and MET
+- "delta_phi_l2_MET"    # deltaPhi(l2, MET) - separation of subleading lepton and MET
+# Charm tagging discriminants
+- "cjet_cand_cvsl_pnet" # PNet CvsL - charm vs light discriminant
+- "cjet_cand_cvsb_pnet" # PNet CvsB - charm vs b discriminant
+# Secondary vertices
+- "nSV"                 # Number of secondary vertices
+
+# No jet-level arrays
+cpf_candidates: []
+
+# No additional features needed
+npf_candidates: []
+
+# No vertex features
+vtx_features: []
+
+# Candidate counts
+n_cpf_candidates: 0
+n_npf_candidates: 0
+n_vtx_candidates: 0
+
+# Binary truth labels (signal vs background)
+truths:
+- "is_higgs"
+- "is_background"
+
+reference_flavour: "is_higgs"
+
+# Data precision
+data_precision: "float32"

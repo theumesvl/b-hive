@@ -1,4 +1,9 @@
 class ModelName:
+    SimpleMLP_HToWW = "SimpleMLP_HToWW"
+    SimpleMLP_HToWW_Large = "SimpleMLP_HToWW_Large"
+    SimpleMLP_HToWW_Small = "SimpleMLP_HToWW_Small"
+    SimpleMLP_MultiClass = "SimpleMLP_MultiClass"
+    SimpleMLP_MultiClass_Large = "SimpleMLP_MultiClass_Large"
     DeepJet = "DeepJet"
     DeepJetHLT = "DeepJetHLT"
     MoDJet = "MoDJet"
@@ -43,6 +48,21 @@ class ModelName:
     
 def BTaggingModels(model: str = "", *args, **kwargs):
     match model:
+        case ModelName.SimpleMLP_HToWW:
+            from utils.models.simple_mlp_HToWW import SimpleMLP_HToWW
+            return SimpleMLP_HToWW(*args, **kwargs)
+        case ModelName.SimpleMLP_HToWW_Large:
+            from utils.models.simple_mlp_HToWW import SimpleMLP_HToWW_Large
+            return SimpleMLP_HToWW_Large(*args, **kwargs)
+        case ModelName.SimpleMLP_HToWW_Small:
+            from utils.models.simple_mlp_HToWW import SimpleMLP_HToWW_Small
+            return SimpleMLP_HToWW_Small(*args, **kwargs)
+        case ModelName.SimpleMLP_MultiClass:
+            from utils.models.simple_mlp_multiclass import SimpleMLP_MultiClass
+            return SimpleMLP_MultiClass(*args, **kwargs)
+        case ModelName.SimpleMLP_MultiClass_Large:
+            from utils.models.simple_mlp_multiclass import SimpleMLP_MultiClass_Large
+            return SimpleMLP_MultiClass_Large(*args, **kwargs)
         case ModelName.DeepJet:
             from utils.models.deepjet import DeepJet
             return DeepJet(*args, **kwargs)
