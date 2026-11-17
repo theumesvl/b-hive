@@ -1,0 +1,143 @@
+# Configuration for HPlusCHToWW multi-class classification
+# Signal (higgs) vs individual backgrounds (tt, st, diboson, vjets)
+
+processes:
+- "default"
+
+# Binning for reweighting (consistent with hww_MVA workflow)
+bins_pt:
+- 0
+- 30
+- 40
+- 60
+- 80
+- 100
+- 120
+- 140
+- 160
+- 180
+- 200
+- 225
+- 250
+- 275
+- 300
+- 325
+- 350
+- 100000
+
+bins_eta:
+- 0
+- 12
+- 20
+- 40
+- 60
+- 72
+- 80
+- 100
+- 120
+- 140
+- 160
+- 180
+- 200
+- 225
+- 250
+- 275
+- 300
+- 325
+- 350
+- 400
+- 450
+- 500
+- 100000
+
+# Keys for pt/eta binning
+pt_key: "dilepton_pt"
+eta_key: "dilepton_mass"
+
+# Processor type
+processor: "LZ4TTCCProcessor"
+
+# Tree name (required but not used for parquet)
+treename: "Events"
+
+# Event-level features for MVA training
+# Based on H+c BDT variables from analysis note (17 variables)
+# NOTE: Variables commented out are not yet in current parquet files
+# Run hww workflow with hww_MVA.yaml config file in MVA branch of ua-cms/higgscharm repo to generate all variables
+global_features:
+# Kinematic variables
+- "dilepton_pt"         # pT(ll) - transverse momentum of dilepton system
+- "lepton1_pt"          # pT(l1) - transverse momentum of leading lepton
+- "lepton2_pt"          # pT(l2) - transverse momentum of subleading lepton
+  #- "cjet_cand_pt"        # pT(c) - transverse momentum of charm jet candidate
+- "met_pt"              # pT(miss) - missing transverse momentum
+- "met_phi"             # phi angle of pT(miss) - phi of missing transverse momentum
+#- "jet_pt"              # transverse momentum of jets
+#- "jet_eta"             # pseudorapidity of jets
+  #- "jet_phi"             # phi angle of jets
+- "jet_multiplicity"    # number of jets in an event
+- "cjet_multiplicity"   # number of c-jets (medium wp) in an event
+- "jet1_pt"             # transverse momentum of the leading jet
+  #- "jet2_pt"             # transverse momentum of the subleading jet
+  #- "jet3_pt"             # transverse momentum of the third leading jet
+# Transverse mass variables
+- "mtl1"                # mT(l1) - transverse mass (leading lepton, MET)
+- "mtl2"                # mT(l2) - transverse mass (subleading lepton, MET)
+- "mtll"
+- "dilepton_mass"       # m(ll) - mass of dilepton system
+# Delta R variables 
+- "delta_R_ll_l1"       # deltaR(ll, l1) - separation between dilepton and leading lepton
+- "delta_R_ll_l2"       # deltaR(ll, l2) - separation between dilepton and subleading lepton
+  #- "delta_R_ll_c"        # deltaR(ll, c) - separation between dilepton and charm jet
+  #- "delta_R_ll_jet1"     # deltaR(ll, jet1) - separation between dilepton and leading jet
+  #- "delta_R_ll_jet2"     # deltaR(ll, jet2) - separation between dilepton and subleading jet
+  #- "delta_R_ll_jet3"     # deltaR(ll, jet3) - separation between dilepton and third leading jet
+# Delta phi variables 
+#- "delta_phi_l1PlusMET_c"  # deltaPhi(l1+MET, c) - separation of l1+MET system and charm jet
+#- "delta_phi_l1_MET"    # deltaPhi(l1, MET) - separation of leading lepton and MET
+- "delta_phi_l2_MET"    # deltaPhi(l2, MET) - separation of subleading lepton and MET
+  #- "delta_phi_ll_MET"          # deltaPhi(ll, MET) - separation of ll system and MET
+  #- "delta_phi_llPlusMET_c"     # deltaPhi(ll+MET, c) - separation of ll+MET system and charm jet
+  #- "delta_phi_l1PlusMET_jet1"  # deltaPhi(l1+MET, jet1) - separation of l1+MET system and leading jet
+  #- "delta_phi_l1PlusMET_jet2"  # deltaPhi(l1+MET, jet2) - separation of l1+MET system and subleading jet
+  #- "delta_phi_l1PlusMET_jet3"  # deltaPhi(l1+MET, jet3) - separation of l1+MET system and third leading jet
+  #- "delta_phi_llPlusMET_jet1"  # deltaPhi(ll+MET, jet1) - separation of ll+MET system and leading jet
+  #- "delta_phi_llPlusMET_jet2"  # deltaPhi(ll+MET, jet2) - separation of ll+MET system and subleading jet
+  #- "delta_phi_llPlusMET_jet3"  # deltaPhi(ll+MET, jet3) - separation of ll+MET system and third leading jet
+# Charm tagging discriminants
+#- "cjet_cand_cvsl_pnet" # PNet CvsL - charm vs light discriminant - for c-jet candidate
+#- "cjet_cand_cvsb_pnet" # PNet CvsB - charm vs b discriminant - for c-jet candidate
+#- "leadingjet_cvsb_pnet" # PNet CvsL - charm vs light discriminant - for leading jet
+- "leadingjet_cvsl_pnet" # PNet CvsB - charm vs b discriminant - for leading jet
+  #- "secondleadingjet_cvsb_pnet"
+  #- "secondleadingjet_cvsl_pnet"
+  #- "thirdleadingjet_cvsb_pnet"
+  #- "thirdleadingjet_cvsl_pnet"
+# Secondary vertices 
+- "nSV"                 # Number of secondary vertices
+
+cpf_candidates: []
+npf_candidates: []
+vtx_features: []
+
+n_cpf_candidates: 0
+n_npf_candidates: 0
+n_vtx_candidates: 0
+
+# Multi-class truth labels (one-hot encoded from process_group)
+truths:
+- "is_higgsbkg"
+- "is_hplusc"
+- "is_tt"
+- "is_st"
+- "is_diboson"
+- "is_vjets"
+
+
+reference_flavour: "is_hplusc"
+
+# Reweighting mode: "histogram" (2D pT/eta ratio) or "class" (inverse-frequency)
+reweighting_mode: "class"
+
+data_precision: "float32"
+

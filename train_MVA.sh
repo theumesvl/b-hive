@@ -13,8 +13,10 @@
 # =============================================================================
 CONFIG="HPlusCHToWW_multiclass"
 #FILELIST="/eos/user/c/cgupta/higgscharm/combined/hww/2022postEE/filelists/base.txt"
-FILELIST="/eos/user/c/cgupta/higgscharm/outputs/hww_MVA/2022postEE/filelists/base.txt"
-VERSION="hww_multiclass_v1"
+#FILELIST="/eos/user/t/tvanlaer/higgscharm/outputs/hww/2022postEE_20260313_1530/filelists/base.txt"
+FILELIST="/eos/user/t/tvanlaer/higgscharm/outputs/hww/2022preEE_20260605_1030_parquet/cleaned_outputs/base/cleaned_parquets_metmax13600_fillvalue-9999/base.txt"
+#FILELIST="/eos/user/t/tvanlaer/higgscharm/outputs/hww/2022preEE_20260605_1030_parquet/cleaned_outputs/base_atleast_one_cjet/cleaned_parquets_metmax13600_fillvalue-9999/base_atleast_one_cjet.txt"
+VERSION="hww_multiclass_v24"
 MODEL="SimpleMLP_MultiClass"
 EPOCHS=50
 BATCH_SIZE=1024

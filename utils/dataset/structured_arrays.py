@@ -127,7 +127,12 @@ def structured_custom_array_from_tree(
     for key, dtype_name in zip(keys, dtype.fields):
         #if feature_length == 1:
         if feature_length == 1 and not key.startswith("MET_"):
-            arr[key] = np.array(events[key], dtype=[(dtype_name, precision)])
+            ak_array = events[key] #added
+
+            # Replace None with 0 #added
+            #ak_array = ak.fill_none(ak_array, 0) #added
+            # Convert to numpy #added
+            arr[key] = np.array(ak_array, dtype=[(dtype_name, precision)])  #replaced
         else:
             # Multi-value fields or MET fields (nested)
             field_data = get_nested_field(events, key, is_parquet, feature_length)
